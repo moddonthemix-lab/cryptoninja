@@ -40,6 +40,8 @@ interface AppState {
   setSelectedAsset: (asset: Asset) => void;
   updateMarketData: (data: Partial<Record<Asset, MarketData>>) => void;
   setPositions: (positions: Position[]) => void;
+  openPosition: (position: Position) => void;
+  closePosition: (positionId: string, exitPrice: number, reason: string) => void;
   setTrades: (trades: Trade[]) => void;
   addTrade: (trade: Trade) => void;
   setStrategies: (strategies: Strategy[]) => void;
@@ -84,6 +86,45 @@ export const useStore = create<AppState>()(
           lastUpdated: Date.now(),
         })),
       setPositions: (positions) => set({ openPositions: positions }),
+      openPosition: (position) =>
+        set((s) => ({
+          openPositions: [...s.openPositions, position],
+          paperBalance: s.paperBalance - (position.size * position.entryPrice) / position.leverage,
+        })),
+      closePosition: (positionId, exitPrice, reason) =>
+        set((s) => {
+          const pos = s.openPositions.find((p) => p.id === positionId);
+          if (!pos) return {};
+          const priceDiff = pos.direction === "long"
+            ? exitPrice - pos.entryPrice
+            : pos.entryPrice - exitPrice;
+          const pnl = priceDiff * pos.size * pos.leverage;
+          const margin = (pos.size * pos.entryPrice) / pos.leverage;
+          const closedTrade: Trade = {
+            id: pos.id,
+            userId: "paper",
+            asset: pos.asset,
+            direction: pos.direction,
+            entryPrice: pos.entryPrice,
+            exitPrice,
+            stopLoss: pos.stopLoss,
+            takeProfit: pos.takeProfit,
+            size: pos.size,
+            leverage: pos.leverage,
+            pnl,
+            pnlPercent: (priceDiff / pos.entryPrice) * 100 * pos.leverage,
+            status: "closed",
+            mode: "paper",
+            openedAt: pos.openedAt,
+            closedAt: new Date().toISOString(),
+            closeReason: reason as any,
+          };
+          return {
+            openPositions: s.openPositions.filter((p) => p.id !== positionId),
+            closedTrades: [closedTrade, ...s.closedTrades].slice(0, 100),
+            paperBalance: s.paperBalance + margin + pnl,
+          };
+        }),
       setTrades: (trades) => set({ closedTrades: trades }),
       addTrade: (trade) =>
         set((s) => ({

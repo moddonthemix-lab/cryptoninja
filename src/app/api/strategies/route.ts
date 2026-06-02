@@ -31,8 +31,39 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  if (!process.env.DATABASE_URL)
-    return NextResponse.json({ error: "Database not configured" }, { status: 503 });
+  const body = await req.json();
+
+  // No-DB mode: return a client-side-only strategy object so the store can hold it
+  if (!process.env.DATABASE_URL) {
+    const strategy = {
+      id: `local_${Date.now()}`,
+      userId: "local",
+      name: body.name ?? "Unnamed",
+      description: body.description ?? "",
+      asset: body.asset ?? "BTC",
+      direction: body.direction ?? "long",
+      leverage: body.leverage ?? 3,
+      positionSizeType: body.positionSizeType ?? "percent",
+      positionSize: body.positionSize ?? 1,
+      stopLoss: body.stopLoss ?? 1.5,
+      takeProfit: body.takeProfit ?? 3,
+      trailingStop: body.trailingStop ?? false,
+      trailingStopPct: body.trailingStopPct ?? 1,
+      maxDailyLoss: body.maxDailyLoss ?? 5,
+      maxTradesPerDay: body.maxTradesPerDay ?? 5,
+      cooldownMinutes: body.cooldownMinutes ?? 30,
+      mode: body.mode ?? "paper",
+      isActive: false,
+      isPaused: false,
+      aiEnabled: body.aiEnabled !== false,
+      newsFilter: body.newsFilter !== false,
+      conditions: body.conditions ?? [],
+      stratPattern: body.stratPattern ?? null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    return NextResponse.json(strategy, { status: 201 });
+  }
   const session = await getSession();
   if (!session.isAuthenticated || !session.address)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -42,7 +73,6 @@ export async function POST(req: NextRequest) {
     const user = await prisma.user.findUnique({ where: { address: session.address } });
     if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
-    const body = await req.json();
     const strategy = await prisma.strategy.create({
       data: {
         userId: user.id,

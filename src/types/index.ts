@@ -91,6 +91,7 @@ export interface Strategy {
   aiEnabled: boolean;
   timeFilter?: { from: string; to: string; timezone: string };
   newsFilter: boolean;
+  stratPattern?: string | null;
   createdAt: string;
   updatedAt: string;
 }
