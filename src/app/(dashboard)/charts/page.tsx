@@ -1,7 +1,5 @@
-import { ChartsContent } from "@/components/chart/ChartsContent";
-
-export const metadata = { title: "Charts — CryptoNinja" };
+import { redirect } from "next/navigation";
 
 export default function ChartsPage() {
-  return <ChartsContent />;
+  redirect("/dashboard");
 }

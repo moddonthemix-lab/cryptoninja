@@ -7,7 +7,6 @@ import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
   LineChart,
-  BarChart2,
   History,
   Settings,
   Zap,
@@ -16,7 +15,6 @@ import {
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/charts", label: "Charts", icon: BarChart2 },
   { href: "/strategy", label: "Strategies", icon: Zap },
   { href: "/trades", label: "Trade History", icon: History },
 ];

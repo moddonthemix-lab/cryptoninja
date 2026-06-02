@@ -7,8 +7,9 @@ import { useStore } from "@/store/useStore";
 import type { Asset, StrategyCondition } from "@/types";
 import { ASSETS } from "@/types";
 import { cn } from "@/lib/utils";
-import { Plus, Trash2, Brain, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Brain, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { WalletGate } from "@/components/wallet/WalletGate";
+import { StrategyConditionsPanel } from "./StrategyConditionsPanel";
 
 interface StrategyForm {
   name: string;
@@ -29,24 +30,6 @@ interface StrategyForm {
   mode: "paper" | "live";
 }
 
-const INDICATOR_OPTIONS = [
-  { value: "RSI", label: "RSI (Relative Strength Index)" },
-  { value: "EMA", label: "EMA (Exponential Moving Average)" },
-  { value: "SMA", label: "SMA (Simple Moving Average)" },
-  { value: "MACD", label: "MACD" },
-  { value: "BB", label: "Bollinger Bands" },
-  { value: "VWAP", label: "VWAP" },
-  { value: "VOLUME", label: "Volume" },
-];
-
-const OPERATOR_OPTIONS = [
-  { value: "gt", label: "Greater than (>)" },
-  { value: "lt", label: "Less than (<)" },
-  { value: "gte", label: "Greater than or equal (≥)" },
-  { value: "lte", label: "Less than or equal (≤)" },
-  { value: "crosses_above", label: "Crosses above" },
-  { value: "crosses_below", label: "Crosses below" },
-];
 
 export function StrategyBuilderContent() {
   const router = useRouter();
@@ -54,6 +37,8 @@ export function StrategyBuilderContent() {
   const [conditions, setConditions] = useState<Partial<StrategyCondition>[]>([]);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [useStrat, setUseStrat] = useState(false);
+  const [selectedStratPattern, setSelectedStratPattern] = useState<string | null>(null);
 
   const { register, handleSubmit, watch, formState: { errors } } = useForm<StrategyForm>({
     defaultValues: {
@@ -108,7 +93,7 @@ export function StrategyBuilderContent() {
       const res = await fetch("/api/strategies", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...data, conditions }),
+        body: JSON.stringify({ ...data, conditions, stratPattern: selectedStratPattern }),
       });
       if (!res.ok) throw new Error("Failed to save");
       const newStrategy = await res.json();
@@ -315,68 +300,22 @@ export function StrategyBuilderContent() {
         </Section>
 
         {/* Entry Conditions */}
-        <Section
-          title="Entry Conditions"
-          action={
-            <button
-              type="button"
-              onClick={addCondition}
-              className="flex items-center gap-1 text-ninja-accent hover:text-ninja-accent-hover text-xs transition-colors"
-            >
-              <Plus size={14} /> Add Condition
-            </button>
-          }
-        >
-          {conditions.length === 0 && (
-            <div className="text-center py-6 text-ninja-muted text-sm">
-              <p>No conditions set — AI will use its own analysis</p>
-              <p className="text-xs mt-1 opacity-70">Add conditions like &quot;RSI &gt; 50&quot; or &quot;Price crosses above EMA 200&quot;</p>
-            </div>
-          )}
-
-          {conditions.map((cond, index) => (
-            <div key={index} className="flex items-center gap-2 p-3 bg-ninja-border/20 rounded-xl">
-              <select
-                value={cond.indicator || "RSI"}
-                onChange={(e) => updateCondition(index, { indicator: e.target.value as any })}
-                className="input flex-1 min-w-0"
-              >
-                {INDICATOR_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-              <select
-                value={cond.operator || "gt"}
-                onChange={(e) => updateCondition(index, { operator: e.target.value as any })}
-                className="input w-40"
-              >
-                {OPERATOR_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-              <input
-                type="number"
-                value={cond.value ?? ""}
-                onChange={(e) => updateCondition(index, { value: parseFloat(e.target.value) })}
-                className="input w-24"
-                placeholder="Value"
-              />
-              <input
-                type="number"
-                value={cond.period ?? ""}
-                onChange={(e) => updateCondition(index, { period: parseInt(e.target.value) })}
-                className="input w-20"
-                placeholder="Period"
-              />
-              <button
-                type="button"
-                onClick={() => removeCondition(index)}
-                className="text-ninja-muted hover:text-ninja-red transition-colors flex-shrink-0"
-              >
-                <Trash2 size={14} />
-              </button>
-            </div>
-          ))}
+        <Section title="Entry Conditions">
+          <StrategyConditionsPanel
+            useStrat={useStrat}
+            onToggleStrat={setUseStrat}
+            selectedPattern={selectedStratPattern}
+            onSelectPattern={setSelectedStratPattern}
+            conditions={conditions.map((c) => ({
+              indicator: c.indicator ?? "RSI",
+              operator: c.operator ?? "gt",
+              value: c.value ?? 50,
+              period: c.period ?? 14,
+            }))}
+            onAddCondition={addCondition}
+            onRemoveCondition={removeCondition}
+            onUpdateCondition={(i, field, value) => updateCondition(i, { [field]: value })}
+          />
         </Section>
 
         {/* AI Settings */}
