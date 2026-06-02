@@ -10,6 +10,7 @@ import { MarketTicker } from "./MarketTicker";
 import { TradingPanel } from "@/components/trading/TradingPanel";
 import { HLPositions } from "@/components/trading/HLPositions";
 import { StrategyRunner } from "@/components/strategy/StrategyRunner";
+import { AutoTrader } from "./AutoTrader";
 import type { Asset } from "@/types";
 import { ASSETS } from "@/types";
 import { cn } from "@/lib/utils";
@@ -136,8 +137,9 @@ export function DashboardContent() {
           )}
         </div>
 
-        {/* Right sidebar: AI Brain + Trading Panel + TheStrat Runner */}
+        {/* Right sidebar: Auto Trader + AI Brain + Trading Panel + TheStrat Runner */}
         <div className="xl:col-span-1 space-y-4">
+          <AutoTrader />
           <AIBrain />
           <TradingPanel />
           <StrategyRunner />

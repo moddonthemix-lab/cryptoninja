@@ -27,6 +27,10 @@ interface AppState {
   aiSignals: Partial<Record<Asset, AISignal>>;
   aiEnabled: boolean;
 
+  // Auto trader
+  autoTradeEnabled: boolean;
+  autoTradeLeverage: number;
+
   // Risk
   emergencyStop: boolean;
 
@@ -48,6 +52,8 @@ interface AppState {
   setActiveStrategy: (id: string | null) => void;
   setAISignal: (asset: Asset, signal: AISignal) => void;
   toggleAI: () => void;
+  toggleAutoTrade: () => void;
+  setAutoTradeLeverage: (n: number) => void;
   triggerEmergencyStop: () => void;
   clearEmergencyStop: () => void;
   setPaperBalance: (balance: number) => void;
@@ -71,6 +77,8 @@ export const useStore = create<AppState>()(
       activeStrategyId: null,
       aiSignals: {},
       aiEnabled: true,
+      autoTradeEnabled: false,
+      autoTradeLeverage: 3,
       emergencyStop: false,
       isLoading: false,
 
@@ -135,7 +143,9 @@ export const useStore = create<AppState>()(
       setAISignal: (asset, signal) =>
         set((s) => ({ aiSignals: { ...s.aiSignals, [asset]: signal } })),
       toggleAI: () => set((s) => ({ aiEnabled: !s.aiEnabled })),
-      triggerEmergencyStop: () => set({ emergencyStop: true, activeStrategyId: null }),
+      toggleAutoTrade: () => set((s) => ({ autoTradeEnabled: !s.autoTradeEnabled })),
+      setAutoTradeLeverage: (n) => set({ autoTradeLeverage: n }),
+      triggerEmergencyStop: () => set({ emergencyStop: true, autoTradeEnabled: false, activeStrategyId: null }),
       clearEmergencyStop: () => set({ emergencyStop: false }),
       setPaperBalance: (balance) => set({ paperBalance: balance }),
       setLoading: (loading) => set({ isLoading: loading }),
@@ -147,6 +157,7 @@ export const useStore = create<AppState>()(
         selectedAsset: state.selectedAsset,
         aiEnabled: state.aiEnabled,
         paperBalance: state.paperBalance,
+        autoTradeLeverage: state.autoTradeLeverage,
       }),
     }
   )
