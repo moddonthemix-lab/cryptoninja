@@ -1,0 +1,184 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  address       String    @unique
+  nonce         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  strategies    Strategy[]
+  trades        Trade[]
+  positions     Position[]
+  riskSettings  RiskSettings?
+  executionLogs ExecutionLog[]
+  apiKeys       ApiKey[]
+
+  @@map("users")
+}
+
+model Strategy {
+  id               String              @id @default(cuid())
+  userId           String
+  user             User                @relation(fields: [userId], references: [id])
+  name             String
+  description      String?
+  asset            String              // BTC, ETH, HYPE, SOL
+  direction        String              // long | short | both
+  leverage         Float               @default(1)
+  positionSizeType String              @default("percent") // fixed | percent
+  positionSize     Float               @default(1)
+  stopLoss         Float               // percentage
+  takeProfit       Float               // percentage
+  trailingStop     Boolean             @default(false)
+  trailingStopPct  Float?
+  maxDailyLoss     Float               @default(5)
+  maxTradesPerDay  Int                 @default(10)
+  cooldownMinutes  Int                 @default(0)
+  isActive         Boolean             @default(false)
+  isPaused         Boolean             @default(false)
+  mode             String              @default("paper") // paper | backtest | live
+  conditions       StrategyCondition[]
+  trades           Trade[]
+  backtests        Backtest[]
+  aiEnabled        Boolean             @default(true)
+  timeFilter       Json?               // { from: "09:00", to: "17:00", timezone: "UTC" }
+  newsFilter       Boolean             @default(true)
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  @@map("strategies")
+}
+
+model StrategyCondition {
+  id           String   @id @default(cuid())
+  strategyId   String
+  strategy     Strategy @relation(fields: [strategyId], references: [id], onDelete: Cascade)
+  type         String   // indicator | price_action | volume | ai
+  indicator    String?  // RSI | EMA | MACD | BB | VWAP
+  operator     String   // gt | lt | gte | lte | crosses_above | crosses_below
+  value        Float?
+  period       Int?
+  description  String?
+  order        Int      @default(0)
+
+  @@map("strategy_conditions")
+}
+
+model Trade {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id])
+  strategyId    String?
+  strategy      Strategy? @relation(fields: [strategyId], references: [id])
+  asset         String
+  direction     String    // long | short
+  entryPrice    Float
+  exitPrice     Float?
+  stopLoss      Float
+  takeProfit    Float
+  size          Float
+  leverage      Float     @default(1)
+  pnl           Float?
+  pnlPercent    Float?
+  status        String    @default("open") // open | closed | liquidated | cancelled
+  closeReason   String?   // tp | sl | manual | emergency | liquidated
+  mode          String    @default("paper")
+  openedAt      DateTime  @default(now())
+  closedAt      DateTime?
+  txHash        String?
+  aiSignal      Json?     // AI reasoning snapshot
+  executionLogs ExecutionLog[]
+
+  @@map("trades")
+}
+
+model Position {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  asset        String
+  direction    String
+  size         Float
+  entryPrice   Float
+  currentPrice Float?
+  unrealizedPnl Float?
+  leverage     Float    @default(1)
+  stopLoss     Float
+  takeProfit   Float
+  tradeId      String?
+  isOpen       Boolean  @default(true)
+  openedAt     DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("positions")
+}
+
+model RiskSettings {
+  id                String  @id @default(cuid())
+  userId            String  @unique
+  user              User    @relation(fields: [userId], references: [id])
+  maxLeverage       Float   @default(5)
+  maxPositionSize   Float   @default(10)
+  maxDailyLoss      Float   @default(5)
+  maxDrawdown       Float   @default(20)
+  maxOpenPositions  Int     @default(3)
+  requireConfirm    Boolean @default(true)
+  emergencyStop     Boolean @default(false)
+  liquidationBuffer Float   @default(20)
+
+  @@map("risk_settings")
+}
+
+model ExecutionLog {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  tradeId    String?
+  trade      Trade?   @relation(fields: [tradeId], references: [id])
+  action     String   // open | close | modify_sl | modify_tp | emergency_stop | ai_signal | error
+  details    Json
+  price      Float?
+  timestamp  DateTime @default(now())
+
+  @@map("execution_logs")
+}
+
+model Backtest {
+  id            String   @id @default(cuid())
+  strategyId    String
+  strategy      Strategy @relation(fields: [strategyId], references: [id])
+  fromDate      DateTime
+  toDate        DateTime
+  totalTrades   Int
+  wins          Int
+  losses        Int
+  winRate       Float
+  totalPnl      Float
+  maxDrawdown   Float
+  sharpeRatio   Float?
+  results       Json
+  status        String   @default("running") // running | complete | failed
+  createdAt     DateTime @default(now())
+
+  @@map("backtests")
+}
+
+model ApiKey {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  exchange    String
+  label       String
+  keyHash     String   // encrypted
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  @@map("api_keys")
+}

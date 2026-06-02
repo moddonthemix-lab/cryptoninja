@@ -1,0 +1,89 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #0a0a0f;
+  --foreground: #e2e8f0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background-color: #0a0a0f;
+  color: #e2e8f0;
+  font-family: 'JetBrains Mono', monospace;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #12121a;
+}
+::-webkit-scrollbar-thumb {
+  background: #1e1e2e;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #7c3aed;
+}
+
+/* Chart container */
+.tv-chart-container {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+/* Animations */
+@keyframes ninja-glow {
+  0%, 100% { box-shadow: 0 0 5px rgba(124, 58, 237, 0.3); }
+  50% { box-shadow: 0 0 20px rgba(124, 58, 237, 0.6); }
+}
+
+.ninja-glow {
+  animation: ninja-glow 2s ease-in-out infinite;
+}
+
+@keyframes price-up {
+  0% { background: rgba(16, 185, 129, 0.3); }
+  100% { background: transparent; }
+}
+
+@keyframes price-down {
+  0% { background: rgba(239, 68, 68, 0.3); }
+  100% { background: transparent; }
+}
+
+.price-flash-up {
+  animation: price-up 0.5s ease-out;
+}
+
+.price-flash-down {
+  animation: price-down 0.5s ease-out;
+}
+
+/* Trading mode badge */
+.mode-paper {
+  @apply bg-yellow-500/20 text-yellow-400 border border-yellow-500/30;
+}
+.mode-live {
+  @apply bg-green-500/20 text-green-400 border border-green-500/30;
+}
+
+/* Form input utilities */
+.input {
+  @apply w-full bg-ninja-border/30 border border-ninja-border rounded-xl px-3 py-2 text-ninja-text text-sm focus:outline-none focus:border-ninja-accent transition-colors placeholder:text-ninja-muted/50;
+}
+
+.label {
+  @apply block text-xs text-ninja-muted mb-1 font-semibold uppercase tracking-wide;
+}
