@@ -40,7 +40,7 @@ export async function fetchCandles(
 
 async function fetchHLCandles(asset: Asset, interval: string, limit: number): Promise<Candle[]> {
   const intervalMap: Record<string, string> = {
-    "1m": "1", "5m": "5", "15m": "15", "1h": "60", "4h": "240", "1d": "D",
+    "1m": "1m", "5m": "5m", "15m": "15m", "1h": "1h", "4h": "4h", "1d": "1d",
   };
   const endTime = Date.now();
   const intervalMs: Record<string, number> = {

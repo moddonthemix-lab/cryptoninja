@@ -15,7 +15,8 @@ function getClient() {
 }
 
 async function fetchCandles(coin: string, interval: string, limit: number): Promise<Candle[]> {
-  const intervalMap: Record<string, string> = { "5m": "5", "15m": "15", "1h": "60", "4h": "240" };
+  // Hyperliquid uses human-readable intervals: "1m","5m","15m","1h","4h","1d"
+  const hlInterval = interval; // our internal names already match HL format
   const endTime = Date.now();
   const startTime = endTime - (INTERVAL_MS[interval] ?? 3_600_000) * limit;
   const res = await fetch(HL_INFO, {
@@ -23,7 +24,7 @@ async function fetchCandles(coin: string, interval: string, limit: number): Prom
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       type: "candleSnapshot",
-      req: { coin, interval: intervalMap[interval] ?? "60", startTime, endTime },
+      req: { coin, interval: hlInterval, startTime, endTime },
     }),
     next: { revalidate: 0 },
   });

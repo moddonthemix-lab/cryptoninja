@@ -4,8 +4,9 @@ import type { Asset, Candle } from "@/types";
 
 const HL_INFO = "https://api.hyperliquid.xyz/info";
 
+// Hyperliquid uses its own interval strings: 1m,5m,15m,1h,4h,1d
 const INTERVAL_MAP: Record<string, string> = {
-  "1m": "1", "5m": "5", "15m": "15", "1h": "60", "4h": "240", "1d": "D",
+  "1m": "1m", "5m": "5m", "15m": "15m", "1h": "1h", "4h": "4h", "1d": "1d",
 };
 const INTERVAL_MS: Record<string, number> = {
   "1m": 60_000, "5m": 300_000, "15m": 900_000,
