@@ -25,7 +25,11 @@ export function AIBrain() {
         body: JSON.stringify({ asset }),
       });
       const signal = await res.json();
-      if (!signal.error) setAISignal(asset, signal);
+      if (signal.error) {
+        setOverview(`⚠️ ${signal.error}`);
+      } else {
+        setAISignal(asset, signal);
+      }
     } finally {
       setLoading(null);
     }
@@ -36,7 +40,11 @@ export function AIBrain() {
     try {
       const res = await fetch("/api/ai/analyze");
       const data = await res.json();
-      setOverview(data.overview || "");
+      if (data.error) {
+        setOverview(`⚠️ ${data.error}`);
+      } else {
+        setOverview(data.overview || "Click an asset above for AI analysis");
+      }
     } finally {
       setLoadingOverview(false);
     }

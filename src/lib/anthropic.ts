@@ -1,9 +1,12 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { Asset, AISignal, Candle, MarketData } from "@/types";
 
-const client = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+// Lazy init — avoids crash at build time when key isn't present
+function getClient(): Anthropic {
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key) throw new Error("ANTHROPIC_API_KEY environment variable is not set");
+  return new Anthropic({ apiKey: key });
+}
 
 export async function getAITradingSignal(
   asset: Asset,
@@ -59,7 +62,7 @@ Provide your analysis in this exact JSON format:
 IMPORTANT: This is for educational/paper trading purposes. Always err on the side of caution. If conditions are unclear, recommend lower confidence and lower leverage. Never suggest leverage above 10x.`;
 
   try {
-    const message = await client.messages.create({
+    const message = await getClient().messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 1024,
       messages: [{ role: "user", content: prompt }],
@@ -113,7 +116,7 @@ export async function getAIMarketOverview(
     .join(", ");
 
   try {
-    const message = await client.messages.create({
+    const message = await getClient().messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 512,
       messages: [
