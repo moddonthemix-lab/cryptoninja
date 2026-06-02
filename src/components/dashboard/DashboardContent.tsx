@@ -7,6 +7,8 @@ import { StatsGrid } from "./StatsGrid";
 import { PositionsTable } from "./PositionsTable";
 import { AIBrain } from "./AIBrain";
 import { MarketTicker } from "./MarketTicker";
+import { TradingPanel } from "@/components/trading/TradingPanel";
+import { HLPositions } from "@/components/trading/HLPositions";
 import type { Asset } from "@/types";
 import { ASSETS } from "@/types";
 import { cn } from "@/lib/utils";
@@ -23,10 +25,9 @@ const TIMEFRAMES = [
 ];
 
 export function DashboardContent() {
-  const { selectedAsset, setSelectedAsset, marketData, openPositions, aiSignals } = useStore();
+  const { selectedAsset, setSelectedAsset, marketData, openPositions, aiSignals, tradingMode } = useStore();
   const [timeframe, setTimeframe] = useState("1h");
 
-  const price = marketData[selectedAsset]?.price;
   const aiSignal = aiSignals[selectedAsset];
   const activePos = openPositions.find((p) => p.asset === selectedAsset && p.isOpen);
 
@@ -71,8 +72,9 @@ export function DashboardContent() {
 
       <StatsGrid />
 
-      {/* Main trading area */}
+      {/* Main trading area: chart + AI on top, trading panel on right */}
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
+        {/* Chart column */}
         <div className="xl:col-span-3 space-y-2">
           {/* Timeframe selector */}
           <div className="flex gap-1">
@@ -133,11 +135,15 @@ export function DashboardContent() {
           )}
         </div>
 
-        <div className="xl:col-span-1">
+        {/* Right sidebar: AI Brain + Trading Panel */}
+        <div className="xl:col-span-1 space-y-4">
           <AIBrain />
+          <TradingPanel />
         </div>
       </div>
 
+      {/* Positions: paper table always, HL live positions when in live mode */}
+      {tradingMode === "live" && <HLPositions />}
       <PositionsTable />
     </div>
   );
