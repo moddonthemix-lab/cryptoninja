@@ -5,14 +5,17 @@ import { useAuth } from "@/hooks/useAuth";
 import { ASSETS } from "@/types";
 import type { Asset } from "@/types";
 import { cn } from "@/lib/utils";
-import { LogOut, RefreshCw } from "lucide-react";
+import { LogOut, Wallet } from "lucide-react";
 import { useState } from "react";
+import { useAccount } from "wagmi";
+import { WalletConnect } from "@/components/wallet/WalletConnect";
 
 const assets: Asset[] = ["BTC", "ETH", "HYPE", "SOL"];
 
 export function TopBar() {
   const { marketData, tradingMode, setTradingMode, selectedAsset, setSelectedAsset } = useStore();
-  const { signOut, address } = useAuth();
+  const { signOut, address, isAuthenticated } = useAuth();
+  const { isConnected } = useAccount();
   const [signingOut, setSigningOut] = useState(false);
 
   return (
@@ -34,10 +37,7 @@ export function TopBar() {
                   : "hover:bg-ninja-border/50"
               )}
             >
-              <span
-                className="text-xs font-bold"
-                style={{ color: ASSETS[asset].color }}
-              >
+              <span className="text-xs font-bold" style={{ color: ASSETS[asset].color }}>
                 {asset}
               </span>
               <span className="text-ninja-text text-xs font-mono">
@@ -77,22 +77,32 @@ export function TopBar() {
         </button>
       </div>
 
-      {/* User */}
+      {/* Auth state */}
       <div className="flex items-center gap-2 flex-shrink-0">
-        <span className="text-ninja-muted text-xs hidden md:block">
-          {address?.slice(0, 6)}...{address?.slice(-4)}
-        </span>
-        <button
-          onClick={async () => {
-            setSigningOut(true);
-            await signOut();
-          }}
-          disabled={signingOut}
-          className="text-ninja-muted hover:text-ninja-red transition-colors p-1"
-          title="Sign out"
-        >
-          <LogOut size={14} />
-        </button>
+        {isConnected && isAuthenticated ? (
+          <>
+            <div className="flex items-center gap-1.5 text-ninja-muted text-xs hidden md:flex">
+              <div className="w-1.5 h-1.5 rounded-full bg-ninja-green" />
+              {address?.slice(0, 6)}...{address?.slice(-4)}
+            </div>
+            <button
+              onClick={async () => { setSigningOut(true); await signOut(); }}
+              disabled={signingOut}
+              className="text-ninja-muted hover:text-ninja-red transition-colors p-1"
+              title="Sign out"
+            >
+              <LogOut size={14} />
+            </button>
+          </>
+        ) : (
+          <div className="flex items-center gap-2">
+            <span className="text-ninja-muted text-xs hidden md:block">
+              <Wallet size={12} className="inline mr-1" />
+              View only
+            </span>
+            <WalletConnect />
+          </div>
+        )}
       </div>
     </header>
   );

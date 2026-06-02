@@ -1,8 +1,5 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { useAccount } from "wagmi";
 import { useStore } from "@/store/useStore";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { TopBar } from "@/components/layout/TopBar";
@@ -12,17 +9,7 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { isConnected } = useAccount();
-  const { isAuthenticated, emergencyStop } = useStore();
-  const router = useRouter();
-
-  useEffect(() => {
-    if (!isConnected || !isAuthenticated) {
-      router.push("/");
-    }
-  }, [isConnected, isAuthenticated, router]);
-
-  if (!isConnected || !isAuthenticated) return null;
+  const { emergencyStop } = useStore();
 
   return (
     <div className="flex h-screen bg-ninja-bg overflow-hidden">

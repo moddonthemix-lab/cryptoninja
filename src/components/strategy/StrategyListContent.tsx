@@ -5,6 +5,7 @@ import { useStore } from "@/store/useStore";
 import type { Strategy } from "@/types";
 import { cn } from "@/lib/utils";
 import { Plus, Play, Pause, Trash2, Zap, Brain } from "lucide-react";
+import { WalletGate } from "@/components/wallet/WalletGate";
 import Link from "next/link";
 import { ASSETS } from "@/types";
 
@@ -150,17 +151,19 @@ function StrategyCard({
         </div>
 
         <div className="flex items-center gap-2 ml-4">
-          <button
-            onClick={onToggle}
-            className={cn(
-              "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border",
-              isActive
-                ? "bg-ninja-accent/20 text-ninja-accent border-ninja-accent/40 hover:bg-red-500/20 hover:text-red-400 hover:border-red-500/40"
-                : "bg-ninja-border/30 text-ninja-muted border-ninja-border hover:border-ninja-accent/40 hover:text-ninja-accent"
-            )}
-          >
-            {isActive ? <><Pause size={12} /> Running</> : <><Play size={12} /> Start</>}
-          </button>
+          <WalletGate action="start strategies">
+            <button
+              onClick={onToggle}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border",
+                isActive
+                  ? "bg-ninja-accent/20 text-ninja-accent border-ninja-accent/40 hover:bg-red-500/20 hover:text-red-400 hover:border-red-500/40"
+                  : "bg-ninja-border/30 text-ninja-muted border-ninja-border hover:border-ninja-accent/40 hover:text-ninja-accent"
+              )}
+            >
+              {isActive ? <><Pause size={12} /> Running</> : <><Play size={12} /> Start</>}
+            </button>
+          </WalletGate>
         </div>
       </div>
     </div>

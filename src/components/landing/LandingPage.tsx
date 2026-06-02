@@ -2,6 +2,8 @@
 
 import { WalletConnect } from "@/components/wallet/WalletConnect";
 import { motion } from "framer-motion";
+import { useRouter } from "next/navigation";
+import { ArrowRight } from "lucide-react";
 
 const features = [
   { icon: "🤖", title: "AI Brain", desc: "Claude AI analyzes BTC, ETH, HYPE & SOL in real-time" },
@@ -11,6 +13,8 @@ const features = [
 ];
 
 export function LandingPage() {
+  const router = useRouter();
+
   return (
     <div className="min-h-screen bg-ninja-bg flex flex-col">
       {/* Header */}
@@ -41,12 +45,26 @@ export function LandingPage() {
           <p className="text-xl text-ninja-muted mb-2">
             AI-powered leverage trading with automated strategies
           </p>
-          <p className="text-sm text-ninja-muted mb-8">
+          <p className="text-sm text-ninja-muted mb-10">
             BTC · ETH · HYPE · SOL — Paper trading mode active
           </p>
 
-          <div className="mb-8">
-            <WalletConnect />
+          {/* CTA buttons */}
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-8">
+            {/* Enter app — no auth required */}
+            <button
+              onClick={() => router.push("/dashboard")}
+              className="flex items-center gap-2 bg-ninja-accent hover:bg-ninja-accent-hover text-white font-bold px-8 py-3 rounded-xl transition-all duration-200 ninja-glow text-base"
+            >
+              Enter App
+              <ArrowRight size={18} />
+            </button>
+
+            {/* Connect wallet — for trading */}
+            <div className="flex flex-col items-center gap-1">
+              <WalletConnect />
+              <span className="text-ninja-muted text-xs">Connect wallet to trade</span>
+            </div>
           </div>
 
           {/* Disclaimer */}

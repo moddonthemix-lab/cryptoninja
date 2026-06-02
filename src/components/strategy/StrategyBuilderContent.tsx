@@ -8,6 +8,7 @@ import type { Asset, StrategyCondition } from "@/types";
 import { ASSETS } from "@/types";
 import { cn } from "@/lib/utils";
 import { Plus, Trash2, Brain, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { WalletGate } from "@/components/wallet/WalletGate";
 
 interface StrategyForm {
   name: string;
@@ -407,27 +408,29 @@ export function StrategyBuilderContent() {
           </label>
         </Section>
 
-        {/* Submit */}
-        <div className="flex gap-3">
-          <button
-            type="submit"
-            disabled={saving || saved}
-            className={cn(
-              "flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-sm transition-all",
-              saved
-                ? "bg-green-600/30 text-green-400 border border-green-500/40"
-                : "bg-ninja-accent hover:bg-ninja-accent-hover text-white"
-            )}
-          >
-            {saved ? (
-              <><CheckCircle2 size={16} /> Strategy Saved!</>
-            ) : saving ? (
-              "Saving..."
-            ) : (
-              "Save Strategy"
-            )}
-          </button>
-        </div>
+        {/* Submit — wallet required */}
+        <WalletGate action="save and run strategies">
+          <div className="flex gap-3">
+            <button
+              type="submit"
+              disabled={saving || saved}
+              className={cn(
+                "flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-sm transition-all",
+                saved
+                  ? "bg-green-600/30 text-green-400 border border-green-500/40"
+                  : "bg-ninja-accent hover:bg-ninja-accent-hover text-white"
+              )}
+            >
+              {saved ? (
+                <><CheckCircle2 size={16} /> Strategy Saved!</>
+              ) : saving ? (
+                "Saving..."
+              ) : (
+                "Save Strategy"
+              )}
+            </button>
+          </div>
+        </WalletGate>
       </form>
     </div>
   );
