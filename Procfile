@@ -1,1 +1,1 @@
-web: npx prisma db push && npm start
+web: sh scripts/start.sh

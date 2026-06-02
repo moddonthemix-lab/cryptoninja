@@ -8,4 +8,4 @@ cmds = ["npm ci --include=dev"]
 cmds = ["npx prisma generate", "npm run build"]
 
 [start]
-cmd = "npx prisma db push && npm start"
+cmd = "sh scripts/start.sh"
