@@ -7,7 +7,7 @@ import type { Asset } from "@/types";
 const TV_SYMBOLS: Record<Asset, string> = {
   BTC: "BINANCE:BTCUSDT",
   ETH: "BINANCE:ETHUSDT",
-  HYPE: "HYPERLIQUID:HYPEUSDT",
+  HYPE: "HYPERLIQUID:HYPEUSDT.P",
   SOL: "BINANCE:SOLUSDT",
 };
 
