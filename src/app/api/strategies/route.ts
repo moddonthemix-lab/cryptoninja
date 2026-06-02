@@ -2,68 +2,85 @@ import { NextRequest, NextResponse } from "next/server";
 import { getIronSession } from "iron-session";
 import { cookies } from "next/headers";
 import { SessionData, sessionOptions } from "@/lib/session";
-import { prisma } from "@/lib/prisma";
 
-async function getUser(req?: NextRequest) {
-  const session = await getIronSession<SessionData>(await cookies(), sessionOptions);
-  if (!session.isAuthenticated || !session.address) return null;
-  return prisma.user.findUnique({ where: { address: session.address } });
+async function getSession() {
+  return getIronSession<SessionData>(await cookies(), sessionOptions);
 }
 
 export async function GET() {
-  const user = await getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!process.env.DATABASE_URL) return NextResponse.json([]);
+  const session = await getSession();
+  if (!session.isAuthenticated || !session.address)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const strategies = await prisma.strategy.findMany({
-    where: { userId: user.id },
-    include: { conditions: { orderBy: { order: "asc" } } },
-    orderBy: { updatedAt: "desc" },
-  });
+  try {
+    const { prisma } = await import("@/lib/prisma");
+    const user = await prisma.user.findUnique({ where: { address: session.address } });
+    if (!user) return NextResponse.json([]);
 
-  return NextResponse.json(strategies);
+    const strategies = await prisma.strategy.findMany({
+      where: { userId: user.id },
+      include: { conditions: { orderBy: { order: "asc" } } },
+      orderBy: { updatedAt: "desc" },
+    });
+    return NextResponse.json(strategies);
+  } catch (e) {
+    console.error(e);
+    return NextResponse.json([]);
+  }
 }
 
 export async function POST(req: NextRequest) {
-  const user = await getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!process.env.DATABASE_URL)
+    return NextResponse.json({ error: "Database not configured" }, { status: 503 });
+  const session = await getSession();
+  if (!session.isAuthenticated || !session.address)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const body = await req.json();
+  try {
+    const { prisma } = await import("@/lib/prisma");
+    const user = await prisma.user.findUnique({ where: { address: session.address } });
+    if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
-  const strategy = await prisma.strategy.create({
-    data: {
-      userId: user.id,
-      name: body.name,
-      description: body.description,
-      asset: body.asset,
-      direction: body.direction,
-      leverage: body.leverage,
-      positionSizeType: body.positionSizeType,
-      positionSize: body.positionSize,
-      stopLoss: body.stopLoss,
-      takeProfit: body.takeProfit,
-      trailingStop: body.trailingStop || false,
-      trailingStopPct: body.trailingStopPct,
-      maxDailyLoss: body.maxDailyLoss,
-      maxTradesPerDay: body.maxTradesPerDay,
-      cooldownMinutes: body.cooldownMinutes || 0,
-      mode: body.mode || "paper",
-      aiEnabled: body.aiEnabled !== false,
-      timeFilter: body.timeFilter,
-      newsFilter: body.newsFilter !== false,
-      conditions: {
-        create: (body.conditions || []).map((c: any, i: number) => ({
-          type: c.type,
-          indicator: c.indicator,
-          operator: c.operator,
-          value: c.value,
-          period: c.period,
-          description: c.description,
-          order: i,
-        })),
+    const body = await req.json();
+    const strategy = await prisma.strategy.create({
+      data: {
+        userId: user.id,
+        name: body.name,
+        description: body.description,
+        asset: body.asset,
+        direction: body.direction,
+        leverage: body.leverage,
+        positionSizeType: body.positionSizeType,
+        positionSize: body.positionSize,
+        stopLoss: body.stopLoss,
+        takeProfit: body.takeProfit,
+        trailingStop: body.trailingStop || false,
+        trailingStopPct: body.trailingStopPct,
+        maxDailyLoss: body.maxDailyLoss,
+        maxTradesPerDay: body.maxTradesPerDay,
+        cooldownMinutes: body.cooldownMinutes || 0,
+        mode: body.mode || "paper",
+        aiEnabled: body.aiEnabled !== false,
+        timeFilter: body.timeFilter,
+        newsFilter: body.newsFilter !== false,
+        conditions: {
+          create: (body.conditions || []).map((c: any, i: number) => ({
+            type: c.type,
+            indicator: c.indicator,
+            operator: c.operator,
+            value: c.value,
+            period: c.period,
+            description: c.description,
+            order: i,
+          })),
+        },
       },
-    },
-    include: { conditions: true },
-  });
-
-  return NextResponse.json(strategy, { status: 201 });
+      include: { conditions: true },
+    });
+    return NextResponse.json(strategy, { status: 201 });
+  } catch (e) {
+    console.error(e);
+    return NextResponse.json({ error: "Failed to create strategy" }, { status: 500 });
+  }
 }

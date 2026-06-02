@@ -3,7 +3,6 @@ import { getIronSession } from "iron-session";
 import { cookies } from "next/headers";
 import { SessionData, sessionOptions } from "@/lib/session";
 import { verifySiweMessage } from "@/lib/siwe";
-import { prisma } from "@/lib/prisma";
 
 export async function POST(req: NextRequest) {
   try {
@@ -22,25 +21,33 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid nonce" }, { status: 401 });
     }
 
-    // Upsert user
-    await prisma.user.upsert({
-      where: { address: siweData.address.toLowerCase() },
-      create: {
-        address: siweData.address.toLowerCase(),
-        nonce: siweData.nonce,
-        riskSettings: {
+    // Try to persist user in DB — fail silently if DB not configured yet
+    if (process.env.DATABASE_URL) {
+      try {
+        const { prisma } = await import("@/lib/prisma");
+        await prisma.user.upsert({
+          where: { address: siweData.address.toLowerCase() },
           create: {
-            maxLeverage: 5,
-            maxPositionSize: 10,
-            maxDailyLoss: 5,
-            maxDrawdown: 20,
-            maxOpenPositions: 3,
-            requireConfirm: true,
+            address: siweData.address.toLowerCase(),
+            nonce: siweData.nonce,
+            riskSettings: {
+              create: {
+                maxLeverage: 5,
+                maxPositionSize: 10,
+                maxDailyLoss: 5,
+                maxDrawdown: 20,
+                maxOpenPositions: 3,
+                requireConfirm: true,
+              },
+            },
           },
-        },
-      },
-      update: { nonce: siweData.nonce, updatedAt: new Date() },
-    });
+          update: { nonce: siweData.nonce, updatedAt: new Date() },
+        });
+      } catch (dbError) {
+        // DB unavailable — still allow login, just won't persist
+        console.warn("DB unavailable during auth, session-only mode:", dbError);
+      }
+    }
 
     session.address = siweData.address.toLowerCase();
     session.chainId = siweData.chainId;
