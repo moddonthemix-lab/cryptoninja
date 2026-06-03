@@ -7,6 +7,8 @@ import { AIBrain } from "./AIBrain";
 import { TradingPanel } from "@/components/trading/TradingPanel";
 import { StrategyRunner } from "@/components/strategy/StrategyRunner";
 import { HyperliquidAccount } from "@/components/wallet/HyperliquidAccount";
+import { LiveTradingSetup } from "@/components/wallet/LiveTradingSetup";
+import { useStore } from "@/store/useStore";
 
 type Tab = "BOT" | "AI" | "TRADE" | "STRAT";
 
@@ -19,6 +21,7 @@ const TABS: { id: Tab; label: string }[] = [
 
 export function RightPanel() {
   const [activeTab, setActiveTab] = useState<Tab>("BOT");
+  const { tradingMode } = useStore();
 
   return (
     <div className="bg-ninja-card border border-ninja-border rounded-lg flex flex-col">
@@ -44,7 +47,12 @@ export function RightPanel() {
       <div className="p-2 overflow-y-auto space-y-3">
         {activeTab === "BOT" && (
           <>
-            <HyperliquidAccount />
+            {tradingMode === "live" ? (
+              <>
+                <LiveTradingSetup />
+                <HyperliquidAccount />
+              </>
+            ) : null}
             <AutoTrader />
           </>
         )}
