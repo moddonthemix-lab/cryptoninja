@@ -158,6 +158,10 @@ export const useStore = create<AppState>()(
         aiEnabled: state.aiEnabled,
         paperBalance: state.paperBalance,
         autoTradeLeverage: state.autoTradeLeverage,
+        // Persist trading data so refreshes don't wipe history (no DB needed)
+        openPositions: state.openPositions,
+        closedTrades: state.closedTrades,
+        strategies: state.strategies,
       }),
     }
   )
