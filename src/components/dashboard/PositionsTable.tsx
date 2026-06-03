@@ -2,24 +2,89 @@
 
 import { useState } from "react";
 import { useStore } from "@/store/useStore";
-import { cn, formatPnl, timeAgo } from "@/lib/utils";
+import { useHyperliquid } from "@/hooks/useHyperliquid";
+import { cn, timeAgo } from "@/lib/utils";
 import { ASSETS } from "@/types";
+import type { Asset } from "@/types";
 import { X } from "lucide-react";
 
 type Tab = "Positions" | "History";
 
+// Normalized position shape so paper + live render through one table
+interface DisplayPosition {
+  id: string;
+  asset: Asset;
+  direction: "long" | "short";
+  size: number;
+  entryPrice: number;
+  leverage: number;
+  stopLoss: number | null;
+  takeProfit: number | null;
+  isLive: boolean;
+  liqPrice?: number | null;
+  unrealizedPnl?: number;
+}
+
 export function PositionsTable() {
-  const { openPositions, closedTrades, marketData, closePosition } = useStore();
+  const { openPositions, closedTrades, marketData, closePosition, tradingMode } = useStore();
+  const { livePositions, closeLivePosition } = useHyperliquid();
   const [activeTab, setActiveTab] = useState<Tab>("Positions");
   const [closing, setClosing] = useState<string | null>(null);
 
-  const openPos = openPositions.filter((p) => p.isOpen);
+  const isLive = tradingMode === "live";
+
+  // Build the display list from the right source
+  const positions: DisplayPosition[] = isLive
+    ? livePositions.map((p) => {
+        const szi = parseFloat(p.szi);
+        return {
+          id: p.coin,
+          asset: p.coin as Asset,
+          direction: szi >= 0 ? "long" : "short",
+          size: Math.abs(szi),
+          entryPrice: parseFloat(p.entryPx),
+          leverage: p.leverage?.value ?? 1,
+          stopLoss: null,
+          takeProfit: null,
+          isLive: true,
+          liqPrice: p.liquidationPx ? parseFloat(p.liquidationPx) : null,
+          unrealizedPnl: parseFloat(p.unrealizedPnl),
+        };
+      })
+    : openPositions
+        .filter((p) => p.isOpen)
+        .map((p) => ({
+          id: p.id,
+          asset: p.asset,
+          direction: p.direction as "long" | "short",
+          size: p.size,
+          entryPrice: p.entryPrice,
+          leverage: p.leverage,
+          stopLoss: p.stopLoss,
+          takeProfit: p.takeProfit,
+          isLive: false,
+          unrealizedPnl: p.unrealizedPnl,
+        }));
+
   const recentTrades = closedTrades.slice(0, 20);
 
-  const handleClose = (posId: string, exitPrice: number) => {
-    setClosing(posId);
-    closePosition(posId, exitPrice, "manual");
-    setTimeout(() => setClosing(null), 300);
+  const handleClose = async (pos: DisplayPosition, exitPrice: number) => {
+    setClosing(pos.id);
+    try {
+      if (pos.isLive) {
+        await closeLivePosition({
+          asset: pos.asset,
+          direction: pos.direction,
+          size: pos.size,
+          currentPrice: exitPrice,
+        });
+      } else {
+        closePosition(pos.id, exitPrice, "manual");
+      }
+    } catch {
+      // error surfaced elsewhere; just clear the closing state
+    }
+    setTimeout(() => setClosing(null), 400);
   };
 
   return (
@@ -38,19 +103,24 @@ export function PositionsTable() {
             )}
           >
             {tab}
-            {tab === "Positions" && openPos.length > 0 && (
+            {tab === "Positions" && positions.length > 0 && (
               <span className="ml-1.5 px-1 py-0.5 rounded bg-ninja-accent/20 text-ninja-accent text-xs">
-                {openPos.length}
+                {positions.length}
               </span>
             )}
           </button>
         ))}
+        {isLive && (
+          <span className="ml-auto text-xs px-1.5 py-0.5 rounded bg-green-500/20 text-green-400 font-bold">
+            LIVE · Hyperliquid
+          </span>
+        )}
       </div>
 
       {/* Positions tab */}
       {activeTab === "Positions" && (
         <>
-          {openPos.length === 0 ? (
+          {positions.length === 0 ? (
             <div className="px-4 py-5 text-center text-ninja-muted text-xs">
               No open positions
             </div>
@@ -63,7 +133,7 @@ export function PositionsTable() {
                     <th className="text-left px-3 py-2">Side</th>
                     <th className="text-right px-3 py-2">Entry</th>
                     <th className="text-right px-3 py-2">Mark</th>
-                    <th className="text-right px-3 py-2">SL / TP</th>
+                    <th className="text-right px-3 py-2">{isLive ? "Liq." : "SL / TP"}</th>
                     <th className="text-right px-3 py-2">Size × Lev</th>
                     <th className="text-right px-3 py-2">Margin</th>
                     <th className="text-right px-3 py-2">Live PnL</th>
@@ -71,22 +141,23 @@ export function PositionsTable() {
                   </tr>
                 </thead>
                 <tbody>
-                  {openPos.map((pos) => {
+                  {positions.map((pos) => {
                     const mark = marketData[pos.asset]?.price;
                     const margin = (pos.size * pos.entryPrice) / pos.leverage;
                     const notional = pos.size * pos.entryPrice;
 
                     let livePnl = 0;
                     let livePnlPct = 0;
-                    if (mark != null) {
+                    if (pos.isLive && pos.unrealizedPnl != null) {
+                      // Live: trust HL's unrealizedPnl
+                      livePnl = pos.unrealizedPnl;
+                      livePnlPct = margin > 0 ? (livePnl / margin) * 100 : 0;
+                    } else if (mark != null) {
                       const priceDiff = pos.direction === "long"
                         ? mark - pos.entryPrice
                         : pos.entryPrice - mark;
                       livePnl = priceDiff * pos.size * pos.leverage;
                       livePnlPct = (priceDiff / pos.entryPrice) * 100 * pos.leverage;
-                    } else {
-                      livePnl = pos.unrealizedPnl ?? 0;
-                      livePnlPct = margin > 0 ? (livePnl / margin) * 100 : 0;
                     }
 
                     const isLong = pos.direction === "long";
@@ -102,14 +173,12 @@ export function PositionsTable() {
                           isClosing && "opacity-40"
                         )}
                       >
-                        {/* Asset */}
                         <td className="px-3 py-2">
-                          <span className="font-bold font-mono" style={{ color: ASSETS[pos.asset].color }}>
+                          <span className="font-bold font-mono" style={{ color: ASSETS[pos.asset]?.color }}>
                             {pos.asset}
                           </span>
                         </td>
 
-                        {/* Side */}
                         <td className="px-3 py-2">
                           <span className={cn(
                             "px-1.5 py-0.5 rounded font-bold",
@@ -119,26 +188,31 @@ export function PositionsTable() {
                           </span>
                         </td>
 
-                        {/* Entry */}
                         <td className="px-3 py-2 text-right font-mono text-ninja-text">
                           ${pos.entryPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
 
-                        {/* Mark */}
                         <td className="px-3 py-2 text-right font-mono text-ninja-muted">
                           {mark != null
                             ? `$${mark.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                             : "—"}
                         </td>
 
-                        {/* SL / TP */}
+                        {/* Liq price (live) or SL/TP (paper) */}
                         <td className="px-3 py-2 text-right font-mono whitespace-nowrap">
-                          <span className="text-ninja-red">${pos.stopLoss.toFixed(2)}</span>
-                          <span className="text-ninja-muted mx-1">/</span>
-                          <span className="text-ninja-green">${pos.takeProfit.toFixed(2)}</span>
+                          {pos.isLive ? (
+                            <span className="text-yellow-400">
+                              {pos.liqPrice ? `$${pos.liqPrice.toFixed(2)}` : "—"}
+                            </span>
+                          ) : (
+                            <>
+                              <span className="text-ninja-red">${pos.stopLoss?.toFixed(2) ?? "—"}</span>
+                              <span className="text-ninja-muted mx-1">/</span>
+                              <span className="text-ninja-green">${pos.takeProfit?.toFixed(2) ?? "—"}</span>
+                            </>
+                          )}
                         </td>
 
-                        {/* Size × Leverage */}
                         <td className="px-3 py-2 text-right font-mono text-ninja-text whitespace-nowrap">
                           <span>{pos.size.toFixed(4)}</span>
                           <span className="text-ninja-muted ml-1">×</span>
@@ -150,13 +224,11 @@ export function PositionsTable() {
                           </span>
                         </td>
 
-                        {/* Margin used */}
                         <td className="px-3 py-2 text-right font-mono text-ninja-muted whitespace-nowrap">
                           ${margin.toFixed(2)}
                           <span className="text-ninja-muted/50 ml-1 text-xs">(${notional.toFixed(0)} notional)</span>
                         </td>
 
-                        {/* Live PnL + % */}
                         <td className="px-3 py-2 text-right font-mono whitespace-nowrap">
                           <span className={cn("font-bold", livePnl >= 0 ? "text-ninja-green" : "text-ninja-red")}>
                             {livePnl >= 0 ? "+" : ""}${Math.abs(livePnl).toFixed(2)}
@@ -169,10 +241,9 @@ export function PositionsTable() {
                           </span>
                         </td>
 
-                        {/* Close button */}
                         <td className="px-3 py-2">
                           <button
-                            onClick={() => handleClose(pos.id, exitPrice)}
+                            onClick={() => handleClose(pos, exitPrice)}
                             disabled={isClosing}
                             title="Close position at market price"
                             className="flex items-center gap-1 px-2 py-1 rounded border border-ninja-border text-ninja-muted hover:border-red-500/60 hover:text-red-400 hover:bg-red-500/10 transition-all text-xs font-bold"
@@ -191,12 +262,14 @@ export function PositionsTable() {
         </>
       )}
 
-      {/* History tab */}
+      {/* History tab (paper trade log) */}
       {activeTab === "History" && (
         <>
           {recentTrades.length === 0 ? (
             <div className="px-4 py-5 text-center text-ninja-muted text-xs">
-              No trades yet — run the auto trader or execute a trade
+              {isLive
+                ? "Live trade history is shown on Hyperliquid"
+                : "No trades yet — run the auto trader or execute a trade"}
             </div>
           ) : (
             <div className="overflow-x-auto">
