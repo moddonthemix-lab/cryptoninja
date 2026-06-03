@@ -1,13 +1,10 @@
 "use client";
 
 import { useStore } from "@/store/useStore";
-import { ASSETS } from "@/types";
-import type { Asset } from "@/types";
+import { ASSETS, ASSET_LIST } from "@/types";
 import { cn } from "@/lib/utils";
 import { Bot } from "lucide-react";
 import { useHyperliquid } from "@/hooks/useHyperliquid";
-
-const assets: Asset[] = ["BTC", "ETH", "HYPE", "SOL"];
 
 export function TopBar() {
   const { marketData, tradingMode, setTradingMode, selectedAsset, setSelectedAsset } = useStore();
@@ -15,31 +12,34 @@ export function TopBar() {
   const equity = account ? parseFloat(account.accountValue) : null;
 
   return (
-    <header className="bg-ninja-card border-b border-ninja-border px-4 py-2 flex items-center gap-4 overflow-x-auto">
-      {/* Asset prices */}
-      <div className="flex items-center gap-4 flex-1 min-w-0">
-        {assets.map((asset) => {
+    <header className="bg-ninja-card border-b border-ninja-border px-4 py-2 flex items-center gap-4">
+      {/* Scrolling ticker tape — every market */}
+      <div className="flex items-center gap-1 flex-1 min-w-0 overflow-x-auto no-scrollbar">
+        {ASSET_LIST.map((asset) => {
           const data = marketData[asset];
           const isSelected = selectedAsset === asset;
           const up = (data?.changePercent24h ?? 0) >= 0;
+          const price = data?.price ?? 0;
           return (
             <button
               key={asset}
               onClick={() => setSelectedAsset(asset)}
               className={cn(
-                "flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all whitespace-nowrap",
+                "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all whitespace-nowrap flex-shrink-0",
                 isSelected
                   ? "bg-ninja-accent/20 border border-ninja-accent/40"
-                  : "hover:bg-ninja-border/50"
+                  : "border border-transparent hover:bg-ninja-border/50"
               )}
             >
-              <span className="text-xs font-bold" style={{ color: ASSETS[asset].color }}>
+              <span className="text-xs font-bold" style={{ color: ASSETS[asset]?.color }}>
                 {asset}
               </span>
               <span className="text-ninja-text text-xs font-mono">
-                ${data?.price?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 }) ?? "—"}
+                {price > 0
+                  ? `$${price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: price < 1 ? 6 : 2 })}`
+                  : "—"}
               </span>
-              <span className={cn("text-xs", up ? "text-ninja-green" : "text-ninja-red")}>
+              <span className={cn("text-xs font-mono", up ? "text-ninja-green" : "text-ninja-red")}>
                 {up ? "+" : ""}{data?.changePercent24h?.toFixed(2) ?? "0.00"}%
               </span>
             </button>

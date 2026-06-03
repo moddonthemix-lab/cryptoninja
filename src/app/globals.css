@@ -157,6 +157,10 @@ button:active:not(:disabled) {
 }
 .live-dot { animation: livePulse 2s ease-in-out infinite; }
 
+/* Horizontal scroll without a visible scrollbar (ticker tape) */
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
 /* Respect reduced motion */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
