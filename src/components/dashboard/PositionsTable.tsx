@@ -6,7 +6,8 @@ import { useHyperliquid } from "@/hooks/useHyperliquid";
 import { cn, timeAgo } from "@/lib/utils";
 import { ASSETS } from "@/types";
 import type { Asset } from "@/types";
-import { X } from "lucide-react";
+import { X, Share2 } from "lucide-react";
+import { ShareCard, type SharePosition } from "./ShareCard";
 
 type Tab = "Positions" | "History";
 
@@ -27,11 +28,44 @@ interface DisplayPosition {
 
 export function PositionsTable() {
   const { openPositions, closedTrades, marketData, closePosition, tradingMode } = useStore();
-  const { livePositions, closeLivePosition } = useHyperliquid();
+  const { livePositions, closeLivePosition, setTpSl } = useHyperliquid();
   const [activeTab, setActiveTab] = useState<Tab>("Positions");
   const [closing, setClosing] = useState<string | null>(null);
+  const [sharePos, setSharePos] = useState<SharePosition | null>(null);
+  const [tpslPos, setTpslPos] = useState<DisplayPosition | null>(null);
+  const [tpInput, setTpInput] = useState("");
+  const [slInput, setSlInput] = useState("");
+  const [tpslSaving, setTpslSaving] = useState(false);
+  const [tpslErr, setTpslErr] = useState<string | null>(null);
 
   const isLive = tradingMode === "live";
+
+  const openTpslEditor = (pos: DisplayPosition) => {
+    setTpInput(pos.takeProfit ? String(pos.takeProfit) : "");
+    setSlInput(pos.stopLoss ? String(pos.stopLoss) : "");
+    setTpslErr(null);
+    setTpslPos(pos);
+  };
+
+  const saveTpsl = async () => {
+    if (!tpslPos) return;
+    setTpslSaving(true);
+    setTpslErr(null);
+    try {
+      await setTpSl({
+        asset: tpslPos.asset,
+        positionIsLong: tpslPos.direction === "long",
+        size: tpslPos.size,
+        takeProfit: tpInput ? parseFloat(tpInput) : null,
+        stopLoss: slInput ? parseFloat(slInput) : null,
+      });
+      setTpslPos(null);
+    } catch (e: any) {
+      setTpslErr(e.message);
+    } finally {
+      setTpslSaving(false);
+    }
+  };
 
   // Build the display list from the right source
   const positions: DisplayPosition[] = isLive
@@ -245,15 +279,36 @@ export function PositionsTable() {
                         </td>
 
                         <td className="px-3 py-2">
-                          <button
-                            onClick={() => handleClose(pos, exitPrice)}
-                            disabled={isClosing}
-                            title="Close position at market price"
-                            className="flex items-center gap-1 px-2 py-1 rounded border border-ninja-border text-ninja-muted hover:border-red-500/60 hover:text-red-400 hover:bg-red-500/10 transition-all text-xs font-bold"
-                          >
-                            <X size={10} />
-                            Close
-                          </button>
+                          <div className="flex items-center gap-1.5 justify-end">
+                            {pos.isLive && (
+                              <button
+                                onClick={() => openTpslEditor(pos)}
+                                title="Set / edit TP & SL"
+                                className="flex items-center gap-1 px-2 py-1 rounded border border-ninja-border text-ninja-muted hover:border-yellow-500/60 hover:text-yellow-400 hover:bg-yellow-500/10 transition-all text-xs font-bold"
+                              >
+                                TP/SL
+                              </button>
+                            )}
+                            <button
+                              onClick={() => setSharePos({
+                                asset: pos.asset, direction: pos.direction, leverage: pos.leverage,
+                                entryPrice: pos.entryPrice, markPrice: mark ?? pos.entryPrice, pnlPct: livePnlPct,
+                              })}
+                              title="Share PnL card"
+                              className="flex items-center gap-1 px-2 py-1 rounded border border-ninja-border text-ninja-muted hover:border-ninja-accent/60 hover:text-ninja-accent hover:bg-ninja-accent/10 transition-all text-xs font-bold"
+                            >
+                              <Share2 size={10} />
+                            </button>
+                            <button
+                              onClick={() => handleClose(pos, exitPrice)}
+                              disabled={isClosing}
+                              title="Close position at market price"
+                              className="flex items-center gap-1 px-2 py-1 rounded border border-ninja-border text-ninja-muted hover:border-red-500/60 hover:text-red-400 hover:bg-red-500/10 transition-all text-xs font-bold"
+                            >
+                              <X size={10} />
+                              Close
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -346,8 +401,18 @@ export function PositionsTable() {
                         <td className={cn("px-3 py-2 text-right font-bold uppercase", reasonColor)}>
                           {trade.closeReason ?? "—"}
                         </td>
-                        <td className="px-3 py-2 text-right text-ninja-muted">
-                          {timeAgo(trade.closedAt ?? trade.openedAt)}
+                        <td className="px-3 py-2 text-right text-ninja-muted whitespace-nowrap">
+                          <span className="mr-2">{timeAgo(trade.closedAt ?? trade.openedAt)}</span>
+                          <button
+                            onClick={() => setSharePos({
+                              asset: trade.asset, direction: trade.direction, leverage: trade.leverage,
+                              entryPrice: trade.entryPrice, markPrice: trade.exitPrice ?? trade.entryPrice, pnlPct,
+                            })}
+                            title="Share PnL card"
+                            className="inline-flex items-center px-1.5 py-1 rounded border border-ninja-border text-ninja-muted hover:border-ninja-accent/60 hover:text-ninja-accent transition-all"
+                          >
+                            <Share2 size={10} />
+                          </button>
                         </td>
                       </tr>
                     );
@@ -357,6 +422,65 @@ export function PositionsTable() {
             </div>
           )}
         </>
+      )}
+
+      {sharePos && <ShareCard position={sharePos} onClose={() => setSharePos(null)} />}
+
+      {/* TP/SL editor for live positions */}
+      {tpslPos && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-fade-in"
+          onClick={() => setTpslPos(null)}
+        >
+          <div
+            className="bg-ninja-card border border-ninja-border rounded-2xl p-5 w-full max-w-xs space-y-4 animate-scale-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-sm text-ninja-text">
+                TP / SL · <span style={{ color: ASSETS[tpslPos.asset]?.color }}>{tpslPos.asset}</span>{" "}
+                <span className={tpslPos.direction === "long" ? "text-ninja-green" : "text-ninja-red"}>
+                  {tpslPos.direction.toUpperCase()}
+                </span>
+              </span>
+              <button onClick={() => setTpslPos(null)} className="text-ninja-muted hover:text-ninja-text">
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="text-xs text-ninja-muted">
+              Entry ${tpslPos.entryPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })} · Size {tpslPos.size}
+            </div>
+
+            <div>
+              <label className="text-xs text-ninja-green font-bold mb-1 block">Take Profit price</label>
+              <input
+                type="number" value={tpInput} onChange={(e) => setTpInput(e.target.value)}
+                placeholder="e.g. 0.00" className="input"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-ninja-red font-bold mb-1 block">Stop Loss price</label>
+              <input
+                type="number" value={slInput} onChange={(e) => setSlInput(e.target.value)}
+                placeholder="e.g. 0.00" className="input"
+              />
+            </div>
+
+            {tpslErr && <div className="text-xs text-red-400">{tpslErr}</div>}
+
+            <button
+              onClick={saveTpsl}
+              disabled={tpslSaving || (!tpInput && !slInput)}
+              className="w-full py-2.5 rounded-lg bg-ninja-accent hover:bg-ninja-accent-hover text-white text-sm font-bold transition-colors disabled:opacity-50"
+            >
+              {tpslSaving ? "Submitting…" : "Set TP / SL"}
+            </button>
+            <p className="text-ninja-muted/60 text-xs">
+              Submits reduce-only trigger orders on Hyperliquid. Leave a field blank to skip it.
+            </p>
+          </div>
+        </div>
       )}
     </div>
   );

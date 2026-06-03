@@ -46,12 +46,43 @@ export const TradingViewWidget = memo(function TradingViewWidget({
 }: TradingViewWidgetProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const widgetRef = useRef<any>(null);
+  const chartReadyRef = useRef(false);
+  const shapeIdsRef = useRef<any[]>([]);
   const pricesRef = useRef({ entryPrice, stopLoss, takeProfit });
   pricesRef.current = { entryPrice, stopLoss, takeProfit };
+
+  // Draw (or redraw) the entry/SL/TP lines, removing any previous ones first.
+  const drawPriceLines = (widget: any) => {
+    try {
+      const chart = widget.activeChart();
+      // Remove existing lines so updates don't stack
+      for (const id of shapeIdsRef.current) {
+        try { chart.removeEntity(id); } catch { /* ignore */ }
+      }
+      shapeIdsRef.current = [];
+
+      const { entryPrice, stopLoss, takeProfit } = pricesRef.current;
+      const add = (price: number, color: string, label: string, style: number, width: number, align: "top" | "bottom") => {
+        const id = chart.createShape({ price }, {
+          shape: "horizontal_line", lock: true, disableSelection: true, disableSave: true, zOrder: "top",
+          overrides: { linecolor: color, linewidth: width, linestyle: style, showLabel: true, textcolor: color,
+            text: `${label}  $${price.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, horzLabelsAlign: "right", vertLabelsAlign: align },
+        });
+        if (id) shapeIdsRef.current.push(id);
+      };
+      if (entryPrice) add(entryPrice, "#7c3aed", "Entry", 0, 2, "bottom");
+      if (stopLoss) add(stopLoss, "#ef4444", "SL", 2, 1, "bottom");
+      if (takeProfit) add(takeProfit, "#10b981", "TP", 2, 1, "top");
+    } catch {
+      // Chart drawing API unavailable in this widget tier — header legend covers it
+    }
+  };
 
   useEffect(() => {
     const node = containerRef.current;
     if (!node) return;
+    chartReadyRef.current = false;
+    shapeIdsRef.current = [];
 
     // The keyed wrapper gives us a fresh empty node each asset/timeframe change,
     // so we can build the TradingView inner div imperatively without React ever
@@ -61,36 +92,6 @@ export const TradingViewWidget = memo(function TradingViewWidget({
     inner.id = containerId;
     inner.style.height = `${height}px`;
     node.appendChild(inner);
-
-    const drawPriceLines = (widget: any) => {
-      try {
-        const chart = widget.activeChart();
-        const { entryPrice, stopLoss, takeProfit } = pricesRef.current;
-        if (entryPrice) {
-          chart.createShape({ price: entryPrice }, {
-            shape: "horizontal_line", lock: true, disableSelection: true, disableSave: true, zOrder: "top",
-            overrides: { linecolor: "#7c3aed", linewidth: 2, linestyle: 0, showLabel: true, textcolor: "#7c3aed",
-              text: `Entry  $${entryPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, horzLabelsAlign: "right", vertLabelsAlign: "bottom" },
-          });
-        }
-        if (stopLoss) {
-          chart.createShape({ price: stopLoss }, {
-            shape: "horizontal_line", lock: true, disableSelection: true, disableSave: true, zOrder: "top",
-            overrides: { linecolor: "#ef4444", linewidth: 1, linestyle: 2, showLabel: true, textcolor: "#ef4444",
-              text: `SL  $${stopLoss.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, horzLabelsAlign: "right", vertLabelsAlign: "bottom" },
-          });
-        }
-        if (takeProfit) {
-          chart.createShape({ price: takeProfit }, {
-            shape: "horizontal_line", lock: true, disableSelection: true, disableSave: true, zOrder: "top",
-            overrides: { linecolor: "#10b981", linewidth: 1, linestyle: 2, showLabel: true, textcolor: "#10b981",
-              text: `TP  $${takeProfit.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, horzLabelsAlign: "right", vertLabelsAlign: "top" },
-          });
-        }
-      } catch {
-        // Chart drawing API unavailable in this widget tier — header legend covers it
-      }
-    };
 
     const loadWidget = () => {
       if (!window.TradingView || !document.getElementById(containerId)) return;
@@ -123,7 +124,10 @@ export const TradingViewWidget = memo(function TradingViewWidget({
           calendar: false,
         });
         widgetRef.current = widget;
-        widget.onChartReady(() => setTimeout(() => drawPriceLines(widget), 500));
+        widget.onChartReady(() => setTimeout(() => {
+          chartReadyRef.current = true;
+          drawPriceLines(widget);
+        }, 500));
       } catch {
         // widget construction failed — leave the empty node, header legend still shows
       }
@@ -150,8 +154,17 @@ export const TradingViewWidget = memo(function TradingViewWidget({
       // the keyed wrapper is removed by React as a single unit.
       try { widgetRef.current?.remove?.(); } catch { /* ignore */ }
       widgetRef.current = null;
+      chartReadyRef.current = false;
     };
   }, [asset, timeframe, height]);
+
+  // Redraw lines whenever entry/SL/TP change (without reloading the chart)
+  useEffect(() => {
+    if (chartReadyRef.current && widgetRef.current) {
+      drawPriceLines(widgetRef.current);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entryPrice, stopLoss, takeProfit]);
 
   const hasLevels = entryPrice || stopLoss || takeProfit;
 

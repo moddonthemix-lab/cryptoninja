@@ -9,8 +9,8 @@ import type { Asset } from "@/types";
 import { AlertTriangle, TrendingUp, TrendingDown, Zap, Shield } from "lucide-react";
 
 export function TradingPanel() {
-  const { selectedAsset, marketData, tradingMode, aiSignals } = useStore();
-  const { placeOrder, setLeverage, loading, error, isLive } = useHyperliquid();
+  const { selectedAsset, marketData, tradingMode, aiSignals, setChartOverlay } = useStore();
+  const { placeOrder, setLeverage, setTpSl, loading, error, isLive } = useHyperliquid();
 
   const [side, setSide] = useState<"long" | "short">("long");
   const [orderType, setOrderType] = useState<"limit" | "market">("limit");
@@ -19,6 +19,8 @@ export function TradingPanel() {
   const [leverage, setLevHandle] = useState(3);
   const [slPct, setSlPct] = useState(1.5);
   const [tpPct, setTpPct] = useState(3);
+  const [useSl, setUseSl] = useState(true);
+  const [useTp, setUseTp] = useState(true);
   const [status, setStatus] = useState<string | null>(null);
   const [hlMeta, setHlMeta] = useState<Record<string, any>>({});
 
@@ -71,6 +73,19 @@ export function TradingPanel() {
   const margin = notional / leverage;
   const maxLev = hlMeta[selectedAsset]?.maxLeverage ?? 50;
 
+  // Mirror the ticket onto the chart as you compose it (and clear on unmount)
+  useEffect(() => {
+    if (!entryPrice) return;
+    setChartOverlay({
+      asset: selectedAsset,
+      entry: entryPrice,
+      sl: useSl && slPct > 0 ? slPrice : null,
+      tp: useTp && tpPct > 0 ? tpPrice : null,
+    });
+  }, [selectedAsset, entryPrice, slPrice, tpPrice, useSl, useTp, slPct, tpPct, setChartOverlay]);
+
+  useEffect(() => () => setChartOverlay(null), [setChartOverlay]);
+
   const handleSubmit = async () => {
     if (!entryPrice || !sz) return;
 
@@ -88,7 +103,21 @@ export function TradingPanel() {
         tif: orderType === "market" ? "Ioc" : "Gtc",
       });
 
-      if (result.status === "ok") {
+      // Attach TP / SL trigger orders if enabled
+      if ((useTp && tpPct > 0) || (useSl && slPct > 0)) {
+        try {
+          await setTpSl({
+            asset: selectedAsset,
+            positionIsLong: side === "long",
+            size: sz,
+            takeProfit: useTp && tpPct > 0 ? tpPrice : null,
+            stopLoss: useSl && slPct > 0 ? slPrice : null,
+          });
+          setStatus(`✅ Order placed with ${useTp ? "TP" : ""}${useTp && useSl ? " + " : ""}${useSl ? "SL" : ""}!`);
+        } catch (tpErr: any) {
+          setStatus(`⚠️ Order filled but TP/SL failed: ${tpErr.message}`);
+        }
+      } else if (result.status === "ok") {
         setStatus(`✅ Order placed! ID: ${result.oid ?? "confirmed"}`);
       }
     } catch (e: any) {
@@ -234,26 +263,34 @@ export function TradingPanel() {
             </div>
           </div>
 
-          {/* SL / TP */}
+          {/* SL / TP with on/off toggles */}
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="label text-ninja-red">Stop Loss %</label>
+              <label className="label text-ninja-red flex items-center gap-1.5 cursor-pointer">
+                <input type="checkbox" checked={useSl} onChange={(e) => setUseSl(e.target.checked)} className="accent-ninja-red" />
+                Stop Loss %
+              </label>
               <input
                 type="number"
                 value={slPct}
                 onChange={(e) => setSlPct(parseFloat(e.target.value))}
                 step="0.1"
-                className="input"
+                disabled={!useSl}
+                className={cn("input", !useSl && "opacity-40")}
               />
             </div>
             <div>
-              <label className="label text-ninja-green">Take Profit %</label>
+              <label className="label text-ninja-green flex items-center gap-1.5 cursor-pointer">
+                <input type="checkbox" checked={useTp} onChange={(e) => setUseTp(e.target.checked)} className="accent-ninja-green" />
+                Take Profit %
+              </label>
               <input
                 type="number"
                 value={tpPct}
                 onChange={(e) => setTpPct(parseFloat(e.target.value))}
                 step="0.1"
-                className="input"
+                disabled={!useTp}
+                className={cn("input", !useTp && "opacity-40")}
               />
             </div>
           </div>

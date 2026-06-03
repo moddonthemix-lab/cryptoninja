@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useAccount } from "wagmi";
 import { useStore } from "@/store/useStore";
 import {
-  buildOrderAction, buildSetLeverageAction, buildCancelAction,
+  buildOrderAction, buildSetLeverageAction, buildCancelAction, buildTriggerOrder,
 } from "@/lib/hyperliquid";
 import type { Asset } from "@/types";
 
@@ -166,6 +166,42 @@ export function useHyperliquid() {
     return submitAction(buildCancelAction(meta.assetId, orderId));
   }, [assetMeta, submitAction]);
 
+  // Attach / update TP and/or SL trigger orders on a position
+  const setTpSl = useCallback(async ({
+    asset, positionIsLong, size, takeProfit, stopLoss,
+  }: {
+    asset: Asset;
+    positionIsLong: boolean;
+    size: number;
+    takeProfit?: number | null;
+    stopLoss?: number | null;
+  }) => {
+    const meta = assetMeta[asset];
+    if (!meta) throw new Error(`Meta not loaded for ${asset}`);
+    setLoading(true);
+    setError(null);
+    try {
+      const results: any[] = [];
+      if (takeProfit && takeProfit > 0) {
+        results.push(await submitAction(
+          buildTriggerOrder(meta.assetId, positionIsLong, takeProfit, size, "tp", meta.szDecimals)
+        ));
+      }
+      if (stopLoss && stopLoss > 0) {
+        results.push(await submitAction(
+          buildTriggerOrder(meta.assetId, positionIsLong, stopLoss, size, "sl", meta.szDecimals)
+        ));
+      }
+      await refreshAccount();
+      return results;
+    } catch (e: any) {
+      setError(e.message);
+      throw e;
+    } finally {
+      setLoading(false);
+    }
+  }, [assetMeta, submitAction, refreshAccount]);
+
   // Legacy-compatible placeOrder for TradingPanel
   const placeOrder = useCallback(async (params: {
     asset: Asset;
@@ -215,6 +251,7 @@ export function useHyperliquid() {
     refreshAccount,
     setLeverage,
     placeOrder,
+    setTpSl,
     placeMarketOrder,
     closeLivePosition,
     cancelOrder,

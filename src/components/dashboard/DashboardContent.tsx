@@ -1,6 +1,7 @@
 "use client";
 
 import { useStore } from "@/store/useStore";
+import { useHyperliquid } from "@/hooks/useHyperliquid";
 import { TradingViewWidget } from "@/components/chart/TradingViewWidget";
 import { StatsGrid } from "./StatsGrid";
 import { PositionsTable } from "./PositionsTable";
@@ -11,10 +12,26 @@ import { ASSETS, DEFAULT_WATCHLIST } from "@/types";
 import { cn } from "@/lib/utils";
 
 export function DashboardContent() {
-  const { selectedAsset, setSelectedAsset, openPositions, aiSignals } = useStore();
+  const { selectedAsset, setSelectedAsset, openPositions, aiSignals, chartOverlay } = useStore();
+  const { livePositions } = useHyperliquid();
 
   const aiSignal = aiSignals[selectedAsset];
   const activePos = openPositions.find((p) => p.asset === selectedAsset && p.isOpen);
+
+  // Live HL position for the selected asset (entry line in live mode)
+  const livePos = livePositions.find((p) => p.coin === ASSETS[selectedAsset]?.hlCoin || p.coin === selectedAsset);
+
+  // What to draw on the chart, in priority order:
+  // 1) the trade ticket overlay (matches selected asset)
+  // 2) live position entry  3) paper position  4) AI signal
+  const overlayMatches = chartOverlay && chartOverlay.asset === selectedAsset;
+  const chartEntry = overlayMatches ? chartOverlay!.entry ?? undefined
+    : livePos ? parseFloat(livePos.entryPx)
+    : activePos?.entryPrice ?? aiSignal?.suggestedEntry;
+  const chartSl = overlayMatches ? chartOverlay!.sl ?? undefined
+    : activePos?.stopLoss ?? aiSignal?.suggestedSL;
+  const chartTp = overlayMatches ? chartOverlay!.tp ?? undefined
+    : activePos?.takeProfit ?? aiSignal?.suggestedTP;
 
   // Quick-access watchlist: defaults + the current selection if it's not in defaults
   const quickList = DEFAULT_WATCHLIST.includes(selectedAsset)
@@ -66,9 +83,9 @@ export function DashboardContent() {
           <TradingViewWidget
             asset={selectedAsset}
             height={520}
-            entryPrice={activePos?.entryPrice ?? aiSignal?.suggestedEntry}
-            stopLoss={activePos?.stopLoss ?? aiSignal?.suggestedSL}
-            takeProfit={activePos?.takeProfit ?? aiSignal?.suggestedTP}
+            entryPrice={chartEntry}
+            stopLoss={chartSl}
+            takeProfit={chartTp}
           />
 
           {/* AI signal bar — compact one-liner */}

@@ -27,6 +27,9 @@ interface AppState {
   aiSignals: Partial<Record<Asset, AISignal>>;
   aiEnabled: boolean;
 
+  // Chart overlay — entry/SL/TP lines to draw (from the trade ticket or a position)
+  chartOverlay: { asset: Asset; entry?: number | null; sl?: number | null; tp?: number | null } | null;
+
   // Auto trader
   autoTradeEnabled: boolean;
   autoTradeLeverage: number;
@@ -42,6 +45,7 @@ interface AppState {
   clearAuth: () => void;
   setTradingMode: (mode: TradingMode) => void;
   setSelectedAsset: (asset: Asset) => void;
+  setChartOverlay: (o: AppState["chartOverlay"]) => void;
   updateMarketData: (data: Partial<Record<Asset, MarketData>>) => void;
   setPositions: (positions: Position[]) => void;
   openPosition: (position: Position) => void;
@@ -76,6 +80,7 @@ export const useStore = create<AppState>()(
       strategies: [],
       activeStrategyId: null,
       aiSignals: {},
+      chartOverlay: null,
       aiEnabled: true,
       autoTradeEnabled: false,
       autoTradeLeverage: 3,
@@ -88,6 +93,7 @@ export const useStore = create<AppState>()(
         set({ address: null, chainId: null, isAuthenticated: false }),
       setTradingMode: (mode) => set({ tradingMode: mode }),
       setSelectedAsset: (asset) => set({ selectedAsset: asset }),
+      setChartOverlay: (o) => set({ chartOverlay: o }),
       updateMarketData: (data) =>
         set((s) => ({
           marketData: { ...s.marketData, ...data },

@@ -266,6 +266,40 @@ export function buildOrderAction(
   };
 }
 
+// Build a TP/SL trigger order (reduce-only) to attach to a position.
+// `positionIsLong` is the direction of the OPEN position; the trigger closes it,
+// so a long position's TP/SL are sell (isBuy=false) orders and vice-versa.
+export function buildTriggerOrder(
+  assetIndex: number,
+  positionIsLong: boolean,
+  triggerPx: number,
+  size: number,
+  tpsl: "tp" | "sl",
+  szDecimals: number = 2
+) {
+  const isBuy = !positionIsLong; // closing order is opposite side
+  return {
+    type: "order",
+    orders: [
+      {
+        a: assetIndex,
+        b: isBuy,
+        p: priceToWire(triggerPx, szDecimals), // market trigger uses triggerPx as limit
+        s: sizeToWire(size, szDecimals),
+        r: true, // reduceOnly
+        t: {
+          trigger: {
+            isMarket: true,
+            triggerPx: priceToWire(triggerPx, szDecimals),
+            tpsl,
+          },
+        },
+      },
+    ],
+    grouping: "normalTpsl",
+  };
+}
+
 // Build cancel action
 export function buildCancelAction(assetIndex: number, orderId: number) {
   return {
