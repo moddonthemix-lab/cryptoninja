@@ -25,16 +25,20 @@ const HL_AGENT_TYPES = {
   ],
 } as const;
 
-// Returns the viem account for the agent key, or null if not configured
+// Returns the viem account for the agent key, or null if not configured / invalid
 export function getAgentAccount() {
   const pk = process.env.HL_AGENT_PRIVATE_KEY;
   if (!pk) return null;
-  const key = pk.startsWith("0x") ? pk : `0x${pk}`;
-  return privateKeyToAccount(key as `0x${string}`);
+  try {
+    const key = pk.startsWith("0x") ? pk : `0x${pk}`;
+    return privateKeyToAccount(key as `0x${string}`);
+  } catch {
+    return null;
+  }
 }
 
 export function isAgentConfigured(): boolean {
-  return !!process.env.HL_AGENT_PRIVATE_KEY;
+  return getAgentAccount() !== null;
 }
 
 // Compute connectionId = keccak256(msgpack(action) + nonce_be8 + vault_bytes20)
