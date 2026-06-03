@@ -1,9 +1,16 @@
 // Server-side Hyperliquid agent signing using a stored API wallet private key.
-// The agent wallet is registered on HL by the user — it can sign orders on their
-// behalf without requiring a wallet popup. The user's main wallet address must be
-// passed as `vaultAddress` so HL knows which account to trade on.
+// The agent (API) wallet is registered on HL by the user. It signs orders on the
+// user's behalf with no wallet popup. Hyperliquid recovers the agent address from
+// the signature and looks up which master account it belongs to.
 //
 // Set env var:  HL_AGENT_PRIVATE_KEY=0x<64 hex chars>
+//
+// Signing follows the official Hyperliquid Python SDK exactly:
+//   action_hash = keccak( msgpack(action) + nonce_be8 + vaultByte [+ expiresAfter] )
+//     vaultByte = 0x00            when no vault (agent wallet case)
+//     vaultByte = 0x01 + addr20   when trading a vault
+//   phantomAgent = { source: "a" (mainnet) | "b" (testnet), connectionId: action_hash }
+//   signature = EIP-712 sign of phantomAgent over the Exchange domain (chainId 1337)
 
 import { encode } from "@msgpack/msgpack";
 import { keccak256 } from "viem";
@@ -14,7 +21,7 @@ const HL_EXCHANGE = "https://api.hyperliquid.xyz/exchange";
 export const HL_L1_DOMAIN = {
   name: "Exchange",
   version: "1",
-  chainId: 1337, // Hyperliquid L1 chain
+  chainId: 1337, // Hyperliquid L1 signing chain (NOT Arbitrum)
   verifyingContract: "0x0000000000000000000000000000000000000000" as `0x${string}`,
 } as const;
 
@@ -30,8 +37,7 @@ export function getAgentAccount() {
   const pk = process.env.HL_AGENT_PRIVATE_KEY;
   if (!pk) return null;
   try {
-    // Strip whitespace/newlines in case Railway stored it across multiple lines
-    const clean = pk.replace(/\s+/g, "");
+    const clean = pk.replace(/\s+/g, ""); // strip whitespace/newlines
     const key = clean.startsWith("0x") ? clean : `0x${clean}`;
     return privateKeyToAccount(key as `0x${string}`);
   } catch {
@@ -43,51 +49,54 @@ export function isAgentConfigured(): boolean {
   return getAgentAccount() !== null;
 }
 
-// Compute connectionId = keccak256(msgpack(action) + nonce_be8 + vault_bytes20)
-function computeConnectionId(action: object, nonce: number, vaultAddress?: string): `0x${string}` {
-  const packed = encode(action);
+// Compute the L1 action hash exactly as the Hyperliquid SDK does.
+// For agent wallets there is no vault, so we append a single 0x00 byte.
+function actionHash(action: object, nonce: number, vaultAddress?: string | null): `0x${string}` {
+  const packed = new Uint8Array(encode(action));
 
   const nonceBytes = new Uint8Array(8);
-  new DataView(nonceBytes.buffer).setBigUint64(0, BigInt(nonce), false);
+  new DataView(nonceBytes.buffer).setBigUint64(0, BigInt(nonce), false); // big-endian
 
-  const vaultBytes = vaultAddress
-    ? (() => {
-        const clean = vaultAddress.startsWith("0x") ? vaultAddress.slice(2) : vaultAddress;
-        const b = new Uint8Array(20);
-        for (let i = 0; i < 20; i++) b[i] = parseInt(clean.slice(i * 2, i * 2 + 2), 16);
-        return b;
-      })()
-    : new Uint8Array(20);
+  let tail: Uint8Array;
+  if (vaultAddress) {
+    const clean = vaultAddress.startsWith("0x") ? vaultAddress.slice(2) : vaultAddress;
+    const addr = new Uint8Array(20);
+    for (let i = 0; i < 20; i++) addr[i] = parseInt(clean.slice(i * 2, i * 2 + 2), 16);
+    tail = new Uint8Array(1 + 20);
+    tail[0] = 0x01;
+    tail.set(addr, 1);
+  } else {
+    tail = new Uint8Array([0x00]); // no vault
+  }
 
-  const combined = new Uint8Array(packed.length + 8 + 20);
+  const combined = new Uint8Array(packed.length + nonceBytes.length + tail.length);
   combined.set(packed, 0);
   combined.set(nonceBytes, packed.length);
-  combined.set(vaultBytes, packed.length + 8);
+  combined.set(tail, packed.length + nonceBytes.length);
 
   return keccak256(combined);
 }
 
 // Sign an action server-side with the agent key and submit to Hyperliquid.
-// `masterAddress` is the main wallet address (the account being traded on).
 export async function submitWithAgent(
   action: object,
-  masterAddress: string
+  _masterAddress?: string // kept for signature-compat; agent wallets don't use vault
 ): Promise<{ status: string; response?: any }> {
   const agent = getAgentAccount();
   if (!agent) throw new Error("HL_AGENT_PRIVATE_KEY not set");
 
   const nonce = Date.now();
-  // When using an agent, vaultAddress in connectionId hash = master wallet
-  const connectionId = computeConnectionId(action, nonce, masterAddress);
+  // Agent wallet → no vault → vaultByte is 0x00
+  const connectionId = actionHash(action, nonce, null);
 
   const sig = await agent.signTypedData({
     domain: HL_L1_DOMAIN,
     types: HL_AGENT_TYPES,
     primaryType: "Agent",
-    message: { source: "a", connectionId },
+    message: { source: "a", connectionId }, // "a" = mainnet
   });
 
-  // Split 65-byte signature
+  // Split 65-byte signature into r, s, v
   const raw = sig.slice(2);
   const signature = {
     r: `0x${raw.slice(0, 64)}` as `0x${string}`,
@@ -95,12 +104,8 @@ export async function submitWithAgent(
     v: parseInt(raw.slice(128, 130), 16),
   };
 
-  const payload = {
-    action,
-    nonce,
-    signature,
-    vaultAddress: masterAddress.toLowerCase(), // required when agent != master
-  };
+  // Agent wallets do NOT send vaultAddress — HL maps agent → master automatically
+  const payload = { action, nonce, signature };
 
   const res = await fetch(HL_EXCHANGE, {
     method: "POST",
@@ -109,8 +114,18 @@ export async function submitWithAgent(
   });
 
   const data = await res.json();
-  if (!res.ok || data.status === "err") {
-    throw new Error(data?.response ?? data?.error ?? "HL exchange error");
+  if (!res.ok) {
+    throw new Error(data?.response ?? data?.error ?? `HL HTTP ${res.status}`);
+  }
+  // HL returns { status: "ok" | "err", response: ... }
+  if (data.status === "err") {
+    throw new Error(typeof data.response === "string" ? data.response : JSON.stringify(data.response));
+  }
+  // Even with status "ok", individual orders can fail — surface that
+  const statuses = data?.response?.data?.statuses;
+  if (Array.isArray(statuses)) {
+    const err = statuses.find((s: any) => s?.error);
+    if (err) throw new Error(err.error);
   }
   return data;
 }

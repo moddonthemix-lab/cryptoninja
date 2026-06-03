@@ -214,22 +214,41 @@ export function buildOrderTypes() {
   } as const;
 }
 
-// Format a number to Hyperliquid's required precision
+// Format a float to Hyperliquid wire format (mimics the Python SDK float_to_wire):
+// fixed 8 decimals, strip trailing zeros, no exponential, no "-0".
 export function floatToWire(x: number): string {
-  const rounded = parseFloat(x.toPrecision(5));
-  if (Math.abs(rounded) >= 1e10) throw new Error(`Number too large: ${x}`);
-  if (rounded === 0) return "0";
-  return rounded.toString();
+  let s = x.toFixed(8);
+  if (s.includes(".")) {
+    s = s.replace(/0+$/, "").replace(/\.$/, "");
+  }
+  if (s === "-0") s = "0";
+  return s;
 }
 
-// Build the action payload for placing an order (to be sent after signing)
+// Round and format a PRICE per HL rules: max 5 significant figures AND at most
+// (MAX_DECIMALS - szDecimals) decimal places. MAX_DECIMALS = 6 for perps.
+export function priceToWire(px: number, szDecimals: number): string {
+  const sigFig = parseFloat(px.toPrecision(5));
+  const allowedDecimals = Math.max(0, 6 - szDecimals);
+  const rounded = parseFloat(sigFig.toFixed(allowedDecimals));
+  return floatToWire(rounded);
+}
+
+// Round and format a SIZE to the asset's szDecimals.
+export function sizeToWire(sz: number, szDecimals: number): string {
+  return floatToWire(parseFloat(sz.toFixed(szDecimals)));
+}
+
+// Build the action payload for placing an order (to be sent after signing).
+// szDecimals comes from the asset meta and controls price/size precision.
 export function buildOrderAction(
   assetIndex: number,
   isBuy: boolean,
   price: number,
   size: number,
   reduceOnly: boolean = false,
-  tif: "Gtc" | "Ioc" | "Alo" = "Gtc"
+  tif: "Gtc" | "Ioc" | "Alo" = "Gtc",
+  szDecimals: number = 2
 ) {
   return {
     type: "order",
@@ -237,8 +256,8 @@ export function buildOrderAction(
       {
         a: assetIndex,
         b: isBuy,
-        p: floatToWire(price),
-        s: floatToWire(size),
+        p: priceToWire(price, szDecimals),
+        s: sizeToWire(size, szDecimals),
         r: reduceOnly,
         t: { limit: { tif } },
       },

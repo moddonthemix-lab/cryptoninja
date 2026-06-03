@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useCallback, useState } from "react";
 import { useStore } from "@/store/useStore";
+import { priceToWire, sizeToWire } from "@/lib/hyperliquid";
 import type { Asset } from "@/types";
 
 const SCAN_INTERVAL_MS = 5 * 60 * 1000; // 5 min between scans
@@ -225,14 +226,14 @@ export function useAutoTrader(asset: Asset) {
           // 2. Place market order (1% slippage limit)
           const isBuy = direction === "long";
           const limitPx = isBuy ? entry * 1.01 : entry * 0.99;
-          const sz = parseFloat((positionUsd / entry).toFixed(assetInfo.szDecimals));
+          const szDec = assetInfo.szDecimals ?? 2;
           const orderAction = {
             type: "order",
             orders: [{
               a: assetInfo.index,
               b: isBuy,
-              p: limitPx.toPrecision(5),
-              s: sz.toString(),
+              p: priceToWire(limitPx, szDec),
+              s: sizeToWire(positionUsd / entry, szDec),
               r: false,
               t: { limit: { tif: "Ioc" } },
             }],

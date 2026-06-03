@@ -116,9 +116,9 @@ export function useHyperliquid() {
       const isBuy = direction === "long";
       // 1% slippage tolerance for market orders
       const limitPx = isBuy ? currentPrice * 1.01 : currentPrice * 0.99;
-      const sz = parseFloat((sizeUsd / currentPrice).toFixed(meta.szDecimals));
+      const sz = sizeUsd / currentPrice;
 
-      const action = buildOrderAction(meta.index, isBuy, limitPx, sz, false, "Ioc");
+      const action = buildOrderAction(meta.index, isBuy, limitPx, sz, false, "Ioc", meta.szDecimals);
       const result = await submitAction(action);
       await refreshAccount();
       return result;
@@ -147,9 +147,7 @@ export function useHyperliquid() {
 
       const isBuy = direction === "short"; // close short = buy back
       const limitPx = isBuy ? currentPrice * 1.01 : currentPrice * 0.99;
-      const sz = parseFloat(size.toFixed(meta.szDecimals));
-
-      const action = buildOrderAction(meta.index, isBuy, limitPx, sz, true, "Ioc"); // reduceOnly
+      const action = buildOrderAction(meta.index, isBuy, limitPx, size, true, "Ioc", meta.szDecimals); // reduceOnly
       const result = await submitAction(action);
       await refreshAccount();
       return result;
@@ -183,9 +181,8 @@ export function useHyperliquid() {
       const meta = assetMeta[HL_COINS[params.asset]];
       if (!meta) throw new Error(`Meta not loaded for ${params.asset}`);
       const action = buildOrderAction(
-        meta.index, params.isBuy, params.price,
-        parseFloat(params.size.toFixed(meta.szDecimals)),
-        params.reduceOnly ?? false, params.tif ?? "Gtc"
+        meta.index, params.isBuy, params.price, params.size,
+        params.reduceOnly ?? false, params.tif ?? "Gtc", meta.szDecimals
       );
       const result = await submitAction(action);
       await refreshAccount();
