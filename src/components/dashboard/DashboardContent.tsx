@@ -25,7 +25,7 @@ export function DashboardContent() {
   const selUp = (selData?.changePercent24h ?? 0) >= 0;
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 animate-fade-in">
       <MarketTicker />
 
       {/* Picker + quick watchlist + current price + inline stats */}
@@ -88,7 +88,7 @@ export function DashboardContent() {
           {/* AI signal bar — compact one-liner */}
           {aiSignal && (
             <div className={cn(
-              "rounded-lg border px-3 py-2 flex items-center gap-3 flex-wrap text-xs",
+              "rounded-lg border px-3 py-2 flex items-center gap-3 flex-wrap text-xs animate-slide-up",
               aiSignal.direction === "long"
                 ? "border-green-500/30 bg-green-500/5"
                 : "border-red-500/30 bg-red-500/5"

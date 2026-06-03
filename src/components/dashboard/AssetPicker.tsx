@@ -57,7 +57,7 @@ export function AssetPicker() {
       </button>
 
       {open && (
-        <div className="absolute z-50 mt-2 w-80 max-h-[70vh] overflow-hidden flex flex-col bg-ninja-card border border-ninja-border rounded-xl shadow-2xl">
+        <div className="absolute z-50 mt-2 w-80 max-h-[70vh] overflow-hidden flex flex-col bg-ninja-card border border-ninja-border rounded-xl shadow-2xl animate-scale-in origin-top-left">
           {/* Search */}
           <div className="flex items-center gap-2 px-3 py-2 border-b border-ninja-border/60">
             <Search size={14} className="text-ninja-muted" />

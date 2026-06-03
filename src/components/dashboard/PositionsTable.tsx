@@ -96,15 +96,18 @@ export function PositionsTable() {
             key={tab}
             onClick={() => setActiveTab(tab)}
             className={cn(
-              "px-3 py-1 rounded text-xs font-bold transition-all",
+              "px-3 py-1 rounded-md text-xs font-bold transition-all duration-200",
               activeTab === tab
-                ? "bg-ninja-accent/15 text-ninja-accent border-b-2 border-ninja-accent"
-                : "text-ninja-muted hover:text-ninja-text"
+                ? "bg-ninja-accent text-white shadow-lg shadow-ninja-accent/20"
+                : "text-ninja-muted hover:text-ninja-text hover:bg-ninja-border/40"
             )}
           >
             {tab}
             {tab === "Positions" && positions.length > 0 && (
-              <span className="ml-1.5 px-1 py-0.5 rounded bg-ninja-accent/20 text-ninja-accent text-xs">
+              <span className={cn(
+                "ml-1.5 px-1 py-0.5 rounded text-xs",
+                activeTab === tab ? "bg-white/20 text-white" : "bg-ninja-accent/20 text-ninja-accent"
+              )}>
                 {positions.length}
               </span>
             )}

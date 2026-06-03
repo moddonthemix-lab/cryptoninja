@@ -24,18 +24,18 @@ export function RightPanel() {
   const { tradingMode } = useStore();
 
   return (
-    <div className="bg-ninja-card border border-ninja-border rounded-lg flex flex-col">
+    <div className="bg-ninja-card border border-ninja-border rounded-xl flex flex-col">
       {/* Tab bar */}
-      <div className="flex items-center gap-1 p-2 border-b border-ninja-border/60">
+      <div className="flex items-center gap-1 p-1.5 m-1.5 rounded-lg bg-ninja-bg/50">
         {TABS.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             className={cn(
-              "flex-1 px-2 py-1.5 rounded text-xs font-bold transition-all",
+              "flex-1 px-2 py-1.5 rounded-md text-xs font-bold transition-all duration-200",
               activeTab === tab.id
-                ? "bg-ninja-accent/15 text-ninja-accent border-b-2 border-ninja-accent"
-                : "text-ninja-muted hover:text-ninja-text"
+                ? "bg-ninja-accent text-white shadow-lg shadow-ninja-accent/20"
+                : "text-ninja-muted hover:text-ninja-text hover:bg-ninja-border/40"
             )}
           >
             {tab.label}
@@ -44,7 +44,7 @@ export function RightPanel() {
       </div>
 
       {/* Panel content */}
-      <div className="p-2 overflow-y-auto space-y-3">
+      <div key={activeTab} className="p-2 overflow-y-auto space-y-3 animate-fade-in">
         {activeTab === "BOT" && (
           <>
             {tradingMode === "live" ? (
