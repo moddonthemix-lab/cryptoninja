@@ -41,3 +41,4 @@ prisma/migrations/
 
 # redis dump
 dump.rdb
+.claude/
