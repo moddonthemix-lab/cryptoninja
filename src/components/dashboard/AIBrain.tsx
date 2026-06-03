@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useStore } from "@/store/useStore";
 import { cn } from "@/lib/utils";
 import { Brain, RefreshCw, TrendingUp, TrendingDown, AlertTriangle, Zap } from "lucide-react";
@@ -16,10 +16,7 @@ export function AIBrain() {
   const [loadingOverview, setLoadingOverview] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Load overview on mount
-  useEffect(() => {
-    getOverview();
-  }, []);
+  // Overview is loaded on demand (button) to conserve API credits — not auto.
 
   const analyzeAsset = async (asset: Asset) => {
     setLoading(asset);

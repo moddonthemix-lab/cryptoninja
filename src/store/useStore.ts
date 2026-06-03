@@ -33,6 +33,9 @@ interface AppState {
   // Auto trader
   autoTradeEnabled: boolean;
   autoTradeLeverage: number;
+  autoTradeCount: number;      // trades opened today
+  autoTradeDate: string;       // YYYY-MM-DD the count belongs to
+  autoTradeLastTs: number;     // ms timestamp of last auto trade (for cooldown)
 
   // Risk
   emergencyStop: boolean;
@@ -58,6 +61,8 @@ interface AppState {
   toggleAI: () => void;
   toggleAutoTrade: () => void;
   setAutoTradeLeverage: (n: number) => void;
+  recordAutoTrade: () => void;
+  getTradesToday: () => number;
   triggerEmergencyStop: () => void;
   clearEmergencyStop: () => void;
   setPaperBalance: (balance: number) => void;
@@ -66,7 +71,7 @@ interface AppState {
 
 export const useStore = create<AppState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       address: null,
       isAuthenticated: false,
       chainId: null,
@@ -84,6 +89,9 @@ export const useStore = create<AppState>()(
       aiEnabled: true,
       autoTradeEnabled: false,
       autoTradeLeverage: 3,
+      autoTradeCount: 0,
+      autoTradeDate: "",
+      autoTradeLastTs: 0,
       emergencyStop: false,
       isLoading: false,
 
@@ -151,6 +159,16 @@ export const useStore = create<AppState>()(
       toggleAI: () => set((s) => ({ aiEnabled: !s.aiEnabled })),
       toggleAutoTrade: () => set((s) => ({ autoTradeEnabled: !s.autoTradeEnabled })),
       setAutoTradeLeverage: (n) => set({ autoTradeLeverage: n }),
+      recordAutoTrade: () => set((s) => {
+        const today = new Date().toISOString().slice(0, 10);
+        const count = s.autoTradeDate === today ? s.autoTradeCount + 1 : 1;
+        return { autoTradeCount: count, autoTradeDate: today, autoTradeLastTs: Date.now() };
+      }),
+      getTradesToday: () => {
+        const s = get();
+        const today = new Date().toISOString().slice(0, 10);
+        return s.autoTradeDate === today ? s.autoTradeCount : 0;
+      },
       triggerEmergencyStop: () => set({ emergencyStop: true, autoTradeEnabled: false, activeStrategyId: null }),
       clearEmergencyStop: () => set({ emergencyStop: false }),
       setPaperBalance: (balance) => set({ paperBalance: balance }),
@@ -165,6 +183,9 @@ export const useStore = create<AppState>()(
         paperBalance: state.paperBalance,
         autoTradeLeverage: state.autoTradeLeverage,
         autoTradeEnabled: state.autoTradeEnabled,
+        autoTradeCount: state.autoTradeCount,
+        autoTradeDate: state.autoTradeDate,
+        autoTradeLastTs: state.autoTradeLastTs,
         // Persist trading data so refreshes don't wipe history (no DB needed)
         openPositions: state.openPositions,
         closedTrades: state.closedTrades,

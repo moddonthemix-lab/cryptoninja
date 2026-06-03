@@ -294,10 +294,18 @@ export async function POST(req: NextRequest) {
       : bearishBHCount > bullishBHCount ? "bearish"
       : "mixed";
 
-    // Valid when detected direction matches FTFC (at least 1 TF confirmed)
-    const breakAndHoldConfirmed = assetFTFC === "bullish"
-      ? bullishBHCount >= 1
-      : bearishBHCount >= 1;
+    // ── Structural break requirement (saves API credits — only trade real breaks) ──
+    // Primary: break of the prior DAILY high (long) or low (short), holding on 5m.
+    // Mid-day fallback: a prior 4H high/low break (when the daily is well underway).
+    const utcHour = new Date().getUTCHours();
+    const midDay = utcHour >= 8 && utcHour <= 22; // London + NY hours
+    const dailyBreak = assetFTFC === "bullish" ? bh.dailyBull : bh.dailyBear;
+    const h4Break = assetFTFC === "bullish" ? bh.h4Bull : bh.h4Bear;
+    const structuralBreak = dailyBreak || (midDay && h4Break);
+
+    // Only proceed (and only spend a Claude call) on a genuine structural break
+    // that agrees with FTFC direction.
+    const breakAndHoldConfirmed = structuralBreak;
 
     // ── Goldbach: multi-timeframe dealing ranges and bias ─────────────────
     // Main dealing range uses daily ADR (macro view)
@@ -348,7 +356,7 @@ export async function POST(req: NextRequest) {
     if (!breakAndHoldConfirmed) {
       return NextResponse.json({
         shouldTrade: false,
-        reason: `FTFC ${assetFTFC} but 5m BnH detected as ${bhDetectedDir} — needs ${assetFTFC} (daily: bull=${bh.dailyBull}/bear=${bh.dailyBear}, 4H: bull=${bh.h4Bull}/bear=${bh.h4Bear}, 1H: bull=${bh.h1Bull}/bear=${bh.h1Bear})`,
+        reason: `No structural break — need a prior ${assetFTFC === "bullish" ? "daily-high" : "daily-low"} break${midDay ? ` or ${assetFTFC === "bullish" ? "4H-high" : "4H-low"} break (mid-day)` : ""} holding on 5m. (dailyBreak=${dailyBreak}, 4Hbreak=${h4Break}, midDay=${midDay})`,
         ftfc: assetFTFC, weeklyDir, dailyDir, h4Dir, h1Dir,
         priorDayHigh: priorDay.high, priorDayLow: priorDay.low,
         priorH4High: priorH4.high, priorH4Low: priorH4.low,

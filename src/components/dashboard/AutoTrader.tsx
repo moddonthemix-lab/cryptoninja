@@ -33,12 +33,14 @@ export function AutoTrader() {
     autoTradeEnabled, toggleAutoTrade,
     autoTradeLeverage, setAutoTradeLeverage,
     selectedAsset, tradingMode, emergencyStop,
-    openPositions, paperBalance,
+    openPositions, paperBalance, getTradesToday,
   } = useStore();
 
   const status = useAutoTrader(selectedAsset);
   const activePos = openPositions.find((p) => p.isOpen && p.asset === selectedAsset);
   const isLive = tradingMode === "live";
+  const tradesToday = getTradesToday();
+  const MAX_TRADES = 5;
 
   return (
     <div className={cn(
@@ -88,6 +90,27 @@ export function AutoTrader() {
         {status.lastScanTime && (
           <span className="text-ninja-muted text-xs ml-auto">last: {status.lastScanTime}</span>
         )}
+      </div>
+
+      {/* Daily trade budget */}
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-ninja-muted">Trades today</span>
+        <div className="flex items-center gap-1.5">
+          <div className="flex gap-1">
+            {[...Array(MAX_TRADES)].map((_, i) => (
+              <span
+                key={i}
+                className={cn(
+                  "w-2 h-2 rounded-full",
+                  i < tradesToday ? "bg-ninja-accent" : "bg-ninja-border"
+                )}
+              />
+            ))}
+          </div>
+          <span className={cn("font-mono font-bold", tradesToday >= MAX_TRADES ? "text-yellow-400" : "text-ninja-text")}>
+            {tradesToday}/{MAX_TRADES}
+          </span>
+        </div>
       </div>
 
       {/* Leverage control */}

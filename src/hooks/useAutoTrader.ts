@@ -27,6 +27,9 @@ const trailMeta: Record<string, {
   direction: "long" | "short";
 }> = {};
 
+const MAX_TRADES_PER_DAY = 5;
+const TRADE_COOLDOWN_MS = 30 * 60 * 1000; // 30 min between auto trades
+
 export function useAutoTrader(asset: Asset) {
   const {
     autoTradeEnabled, autoTradeLeverage, emergencyStop,
@@ -158,11 +161,26 @@ export function useAutoTrader(asset: Asset) {
   const runScan = useCallback(async () => {
     if (scanningRef.current || emergencyStop) return;
 
-    // Allow up to 2 concurrent positions per asset
-    const openCount = useStore.getState().openPositions.filter(
-      (p) => p.isOpen && p.asset === asset
-    ).length;
-    if (openCount >= 2) return;
+    const store = useStore.getState();
+
+    // ── Daily trade cap — stop calling the API entirely once hit ──
+    const tradesToday = store.getTradesToday();
+    if (tradesToday >= MAX_TRADES_PER_DAY) {
+      setStatus((s) => ({ ...s, state: "idle", lastSignal: `Daily limit reached (${MAX_TRADES_PER_DAY} trades). Resets at UTC midnight.` }));
+      return;
+    }
+
+    // ── Cooldown between trades — avoids spamming the API ──
+    const sinceLast = Date.now() - (store.autoTradeLastTs || 0);
+    if (store.autoTradeLastTs && sinceLast < TRADE_COOLDOWN_MS) {
+      const mins = Math.ceil((TRADE_COOLDOWN_MS - sinceLast) / 60000);
+      setStatus((s) => ({ ...s, state: "idle", lastSignal: `Cooldown — next scan in ~${mins} min` }));
+      return;
+    }
+
+    // One position per asset at a time (don't re-scan/charge while in a trade)
+    const openCount = store.openPositions.filter((p) => p.isOpen && p.asset === asset).length;
+    if (openCount >= 1) return;
 
     scanningRef.current = true;
     setStatus((s) => ({ ...s, state: "scanning", lastScanTime: new Date().toLocaleTimeString() }));
@@ -264,8 +282,11 @@ export function useAutoTrader(asset: Asset) {
 
       trailMeta[posId] = { peakPrice: entry, trailTriggerPct, trailRetreatPct, leverage: autoTradeLeverage, direction };
 
+      // Count this trade toward the daily cap + start the cooldown
+      useStore.getState().recordAutoTrade();
+
       addLog(
-        `Opened ${direction.toUpperCase()} ${asset} @ $${entry.toFixed(2)} | SL $${sl.toFixed(2)} | TP $${tp.toFixed(2)} | Trail +${trailTriggerPct}%`,
+        `Opened ${direction.toUpperCase()} ${asset} @ $${entry.toFixed(2)} | SL $${sl.toFixed(2)} | TP $${tp.toFixed(2)} | Trail +${trailTriggerPct}% | Trade ${useStore.getState().getTradesToday()}/${MAX_TRADES_PER_DAY} today`,
         "trade"
       );
       setStatus((s) => ({ ...s, state: "in_position", lastSignal: reasoning }));
