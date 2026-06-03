@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { useStore } from "@/store/useStore";
 import { useHyperliquid } from "@/hooks/useHyperliquid";
-import { WalletGate } from "@/components/wallet/WalletGate";
 import { cn } from "@/lib/utils";
 import { ASSETS } from "@/types";
 import type { Asset } from "@/types";
@@ -130,8 +129,7 @@ export function TradingPanel() {
         </div>
       )}
 
-      <WalletGate action="place trades on Hyperliquid">
-        <div className="space-y-3">
+      <div className="space-y-3">
           {/* AI Signal quick-fill */}
           {aiSignal && (
             <button
@@ -322,7 +320,6 @@ export function TradingPanel() {
             )}
           </button>
         </div>
-      </WalletGate>
     </div>
   );
 }

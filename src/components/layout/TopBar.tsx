@@ -1,23 +1,18 @@
 "use client";
 
 import { useStore } from "@/store/useStore";
-import { useAuth } from "@/hooks/useAuth";
 import { ASSETS } from "@/types";
 import type { Asset } from "@/types";
 import { cn } from "@/lib/utils";
-import { LogOut, Wallet, Unplug } from "lucide-react";
-import { useState } from "react";
-import { useAccount, useDisconnect } from "wagmi";
-import { WalletConnect } from "@/components/wallet/WalletConnect";
+import { Bot } from "lucide-react";
+import { useHyperliquid } from "@/hooks/useHyperliquid";
 
 const assets: Asset[] = ["BTC", "ETH", "HYPE", "SOL"];
 
 export function TopBar() {
   const { marketData, tradingMode, setTradingMode, selectedAsset, setSelectedAsset } = useStore();
-  const { signOut, address, isAuthenticated } = useAuth();
-  const { isConnected } = useAccount();
-  const { disconnect } = useDisconnect();
-  const [signingOut, setSigningOut] = useState(false);
+  const { account } = useHyperliquid();
+  const equity = account ? parseFloat(account.accountValue) : null;
 
   return (
     <header className="bg-ninja-card border-b border-ninja-border px-4 py-2 flex items-center gap-4 overflow-x-auto">
@@ -78,45 +73,16 @@ export function TopBar() {
         </button>
       </div>
 
-      {/* Auth state */}
-      <div className="flex items-center gap-2 flex-shrink-0">
-        {isConnected ? (
-          <div className="flex items-center gap-2">
-            {isAuthenticated && (
-              <div className="flex items-center gap-1.5 text-ninja-muted text-xs hidden md:flex">
-                <div className="w-1.5 h-1.5 rounded-full bg-ninja-green animate-pulse" />
-                {address?.slice(0, 6)}...{address?.slice(-4)}
-              </div>
-            )}
-            {isAuthenticated && (
-              <button
-                onClick={async () => { setSigningOut(true); await signOut(); }}
-                disabled={signingOut}
-                className="text-ninja-muted hover:text-ninja-yellow transition-colors p-1.5 rounded hover:bg-ninja-border/40"
-                title="Sign out (keeps wallet connected)"
-              >
-                <LogOut size={13} />
-              </button>
-            )}
-            <button
-              onClick={() => { signOut(); disconnect(); }}
-              className="flex items-center gap-1.5 text-ninja-muted hover:text-ninja-red transition-colors px-2 py-1.5 rounded hover:bg-red-500/10 text-xs border border-ninja-border hover:border-red-500/40"
-              title="Disconnect wallet"
-            >
-              <Unplug size={12} />
-              <span className="hidden md:inline">Disconnect</span>
-            </button>
-          </div>
-        ) : (
-          <div className="flex items-center gap-2">
-            <span className="text-ninja-muted text-xs hidden md:block">
-              <Wallet size={12} className="inline mr-1" />
-              View only
-            </span>
-            <WalletConnect />
-          </div>
-        )}
-      </div>
+      {/* HL account equity (live mode only) */}
+      {tradingMode === "live" && equity !== null && (
+        <div className="flex items-center gap-1.5 text-xs flex-shrink-0">
+          <Bot size={12} className="text-ninja-accent" />
+          <span className="text-ninja-muted hidden md:inline">Equity</span>
+          <span className="font-mono font-bold text-ninja-green">
+            ${equity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </span>
+        </div>
+      )}
     </header>
   );
 }

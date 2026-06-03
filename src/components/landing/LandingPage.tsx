@@ -1,14 +1,13 @@
 "use client";
 
-import { WalletConnect } from "@/components/wallet/WalletConnect";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 
 const features = [
-  { icon: "🤖", title: "AI Brain", desc: "Claude AI analyzes BTC, ETH, HYPE & SOL in real-time" },
-  { icon: "⚡", title: "Lightning Fast", desc: "Automated strategy execution the moment conditions are met" },
-  { icon: "🛡️", title: "Risk First", desc: "Paper trading, kill switches, and hard stop-loss enforcement" },
+  { icon: "🤖", title: "AI Brain", desc: "Claude AI analyzes BTC, ETH, HYPE & SOL using TheStrat FTFC methodology" },
+  { icon: "⚡", title: "Auto Trader", desc: "API wallet signs and submits real orders automatically — no wallet popups" },
+  { icon: "🛡️", title: "Risk First", desc: "Paper trading, emergency kill switch, and hard stop-loss enforcement" },
   { icon: "📊", title: "Live Charts", desc: "TradingView charts with entry, stop loss & take profit overlays" },
 ];
 
@@ -22,11 +21,16 @@ export function LandingPage() {
         <div className="flex items-center gap-2">
           <span className="text-2xl">🥷</span>
           <span className="font-bold text-xl text-ninja-text">CryptoNinja</span>
-          <span className="text-xs bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 px-2 py-0.5 rounded-full ml-2">
-            BETA · PAPER TRADING
+          <span className="text-xs bg-ninja-accent/20 text-ninja-accent border border-ninja-accent/30 px-2 py-0.5 rounded-full ml-2">
+            BETA
           </span>
         </div>
-        <WalletConnect />
+        <button
+          onClick={() => router.push("/dashboard")}
+          className="flex items-center gap-2 text-ninja-muted hover:text-ninja-text text-sm transition-colors"
+        >
+          Open Dashboard <ArrowRight size={14} />
+        </button>
       </header>
 
       {/* Hero */}
@@ -46,34 +50,23 @@ export function LandingPage() {
             AI-powered leverage trading with automated strategies
           </p>
           <p className="text-sm text-ninja-muted mb-10">
-            BTC · ETH · HYPE · SOL — Paper trading mode active
+            BTC · ETH · HYPE · SOL — Hyperliquid perps
           </p>
 
-          {/* CTA buttons */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-8">
-            {/* Enter app — no auth required */}
-            <button
-              onClick={() => router.push("/dashboard")}
-              className="flex items-center gap-2 bg-ninja-accent hover:bg-ninja-accent-hover text-white font-bold px-8 py-3 rounded-xl transition-all duration-200 ninja-glow text-base"
-            >
-              Enter App
-              <ArrowRight size={18} />
-            </button>
-
-            {/* Connect wallet — for trading */}
-            <div className="flex flex-col items-center gap-1">
-              <WalletConnect />
-              <span className="text-ninja-muted text-xs">Connect wallet to trade</span>
-            </div>
-          </div>
+          <button
+            onClick={() => router.push("/dashboard")}
+            className="flex items-center gap-2 bg-ninja-accent hover:bg-ninja-accent-hover text-white font-bold px-10 py-3 rounded-xl transition-all duration-200 ninja-glow text-base mx-auto"
+          >
+            Enter App
+            <ArrowRight size={18} />
+          </button>
 
           {/* Disclaimer */}
-          <div className="bg-red-900/20 border border-red-800/40 rounded-xl p-4 text-left max-w-xl mx-auto">
+          <div className="bg-red-900/20 border border-red-800/40 rounded-xl p-4 text-left max-w-xl mx-auto mt-8">
             <p className="text-red-400 text-xs font-bold mb-1">⚠️ RISK DISCLAIMER</p>
             <p className="text-red-300/70 text-xs">
-              Leverage trading involves substantial risk of loss. This platform is for educational purposes.
-              Always start with paper trading. Never trade more than you can afford to lose.
-              Past performance does not guarantee future results.
+              Leverage trading involves substantial risk of loss. Always start with paper trading.
+              Never trade more than you can afford to lose. Past performance does not guarantee future results.
             </p>
           </div>
         </motion.div>
@@ -86,10 +79,7 @@ export function LandingPage() {
           className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-16 max-w-4xl w-full"
         >
           {features.map((f) => (
-            <div
-              key={f.title}
-              className="bg-ninja-card border border-ninja-border rounded-xl p-4 text-left"
-            >
+            <div key={f.title} className="bg-ninja-card border border-ninja-border rounded-xl p-4 text-left">
               <div className="text-2xl mb-2">{f.icon}</div>
               <div className="font-semibold text-ninja-text text-sm mb-1">{f.title}</div>
               <div className="text-ninja-muted text-xs">{f.desc}</div>
