@@ -54,7 +54,7 @@ export function LiveTradingSetup() {
       done: hlFunded,
       detail: hlFunded
         ? `$${hlEquity?.toFixed(2)} equity — ready to trade`
-        : "Deposit USDC on Hyperliquid (minimum ~$10)",
+        : "Deposit USDC on Hyperliquid (minimum $5)",
       action: !hlFunded ? (
         <a
           href="https://app.hyperliquid.xyz/trade"
