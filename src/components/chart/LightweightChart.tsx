@@ -6,7 +6,10 @@ import {
   type IChartApi, type ISeriesApi, type IPriceLine, type UTCTimestamp,
 } from "lightweight-charts";
 import { ASSETS } from "@/types";
+import { useStore } from "@/store/useStore";
 import { cn } from "@/lib/utils";
+
+type Bar = { time: number; open: number; high: number; low: number; close: number; volume: number };
 
 interface Props {
   asset: string;
@@ -26,9 +29,26 @@ export const LightweightChart = memo(function LightweightChart({
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const priceLinesRef = useRef<IPriceLine[]>([]);
+  const lastBarRef = useRef<Bar | null>(null);
   const [timeframe, setTimeframe] = useState<string>("1h");
   const [loading, setLoading] = useState(true);
   const [empty, setEmpty] = useState(false);
+
+  // Live last price from the store (updates ~every 30s via the market poll)
+  const livePrice = useStore((s) => s.marketData[asset]?.price);
+
+  // Sort ascending + dedupe by time (lightweight-charts requires strict order)
+  const clean = (bars: Bar[]): Bar[] => {
+    const sorted = bars
+      .filter((b) => b && isFinite(b.time) && isFinite(b.close))
+      .sort((a, b) => a.time - b.time);
+    const out: Bar[] = [];
+    for (const b of sorted) {
+      if (out.length && out[out.length - 1].time === b.time) out[out.length - 1] = b;
+      else out.push(b);
+    }
+    return out;
+  };
 
   // Create chart once
   useEffect(() => {
@@ -72,33 +92,68 @@ export const LightweightChart = memo(function LightweightChart({
     };
   }, [height]);
 
-  // Load candles on asset / timeframe change
+  // Load candles on asset / timeframe change, then poll for live updates
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setEmpty(false);
-    (async () => {
+
+    const applyFull = (bars: Bar[]) => {
+      const cleaned = clean(bars);
+      if (cleaned.length === 0) { setEmpty(true); setLoading(false); return; }
+      candleSeriesRef.current?.setData(
+        cleaned.map((c) => ({ time: c.time as UTCTimestamp, open: c.open, high: c.high, low: c.low, close: c.close }))
+      );
+      volSeriesRef.current?.setData(
+        cleaned.map((c) => ({ time: c.time as UTCTimestamp, value: c.volume, color: c.close >= c.open ? "#10b98133" : "#ef444433" }))
+      );
+      lastBarRef.current = cleaned[cleaned.length - 1];
+      chartRef.current?.timeScale().fitContent();
+      setEmpty(false);
+      setLoading(false);
+    };
+
+    const fetchCandles = async (full: boolean) => {
       try {
-        const res = await fetch(`/api/hl/candles?asset=${encodeURIComponent(asset)}&interval=${timeframe}&limit=400`);
+        const res = await fetch(`/api/hl/candles?asset=${encodeURIComponent(asset)}&interval=${timeframe}&limit=${full ? 400 : 3}`);
         const data = await res.json();
         if (cancelled) return;
-        const candles = (data.candles ?? []) as Array<{ time: number; open: number; high: number; low: number; close: number; volume: number }>;
-        if (candles.length === 0) { setEmpty(true); setLoading(false); return; }
-
-        candleSeriesRef.current?.setData(
-          candles.map((c) => ({ time: c.time as UTCTimestamp, open: c.open, high: c.high, low: c.low, close: c.close }))
-        );
-        volSeriesRef.current?.setData(
-          candles.map((c) => ({ time: c.time as UTCTimestamp, value: c.volume, color: c.close >= c.open ? "#10b98133" : "#ef444433" }))
-        );
-        chartRef.current?.timeScale().fitContent();
-        setLoading(false);
+        const bars = (data.candles ?? []) as Bar[];
+        if (full) { applyFull(bars); return; }
+        // Incremental: update/append the latest couple of bars
+        for (const b of clean(bars)) {
+          candleSeriesRef.current?.update({ time: b.time as UTCTimestamp, open: b.open, high: b.high, low: b.low, close: b.close });
+          volSeriesRef.current?.update({ time: b.time as UTCTimestamp, value: b.volume, color: b.close >= b.open ? "#10b98133" : "#ef444433" });
+          lastBarRef.current = b;
+        }
       } catch {
-        if (!cancelled) { setEmpty(true); setLoading(false); }
+        if (full && !cancelled) { setEmpty(true); setLoading(false); }
       }
-    })();
-    return () => { cancelled = true; };
+    };
+
+    setLoading(true);
+    setEmpty(false);
+    fetchCandles(true);
+    // Poll for new bars: faster on low timeframes
+    const pollMs = timeframe === "5m" || timeframe === "15m" ? 15000 : 30000;
+    const id = setInterval(() => fetchCandles(false), pollMs);
+    return () => { cancelled = true; clearInterval(id); };
   }, [asset, timeframe]);
+
+  // Smoothly update the forming candle's close from the live store price
+  useEffect(() => {
+    const series = candleSeriesRef.current;
+    const last = lastBarRef.current;
+    if (!series || !last || !livePrice) return;
+    const updated: Bar = {
+      ...last,
+      close: livePrice,
+      high: Math.max(last.high, livePrice),
+      low: Math.min(last.low, livePrice),
+    };
+    lastBarRef.current = updated;
+    try {
+      series.update({ time: updated.time as UTCTimestamp, open: updated.open, high: updated.high, low: updated.low, close: updated.close });
+    } catch { /* ignore */ }
+  }, [livePrice]);
 
   // Draw / update entry, SL, TP price lines reactively
   useEffect(() => {
