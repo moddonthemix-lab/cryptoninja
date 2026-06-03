@@ -46,10 +46,10 @@ export function useHyperliquid() {
   const [error, setError] = useState<string | null>(null);
 
   const refreshAccount = useCallback(async () => {
-    if (!address) return;
     try {
+      const accountUrl = address ? `/api/hl/account?address=${address}` : "/api/hl/account";
       const [accRes, metaRes] = await Promise.all([
-        fetch(`/api/hl/account?address=${address}`),
+        fetch(accountUrl),
         fetch("/api/hl/meta"),
       ]);
       const accData = await accRes.json();
@@ -69,13 +69,12 @@ export function useHyperliquid() {
     }
   }, [address]);
 
+  // Fetch on mount and every 15s — works with or without wallet connected
   useEffect(() => {
-    if (address) {
-      refreshAccount();
-      const interval = setInterval(refreshAccount, 15_000);
-      return () => clearInterval(interval);
-    }
-  }, [address, refreshAccount]);
+    refreshAccount();
+    const interval = setInterval(refreshAccount, 15_000);
+    return () => clearInterval(interval);
+  }, [refreshAccount]);
 
   // Core: sign any HL action and submit via our server proxy
   const submitAction = useCallback(async (action: object): Promise<any> => {

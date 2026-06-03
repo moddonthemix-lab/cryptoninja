@@ -8,8 +8,12 @@ export async function GET(req: NextRequest) {
   const session = await getIronSession<SessionData>(await cookies(), sessionOptions);
   const { searchParams } = new URL(req.url);
 
-  // Allow explicit address override for demo/guest view
-  const address = searchParams.get("address") || session.address;
+  // Priority: explicit param → session wallet → HL_MASTER_ADDRESS env var
+  const address =
+    searchParams.get("address") ||
+    session.address ||
+    process.env.HL_MASTER_ADDRESS;
+
   if (!address) return NextResponse.json({ error: "No address" }, { status: 400 });
 
   try {

@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useCallback, useState } from "react";
 import { useStore } from "@/store/useStore";
-import { useHyperliquid } from "@/hooks/useHyperliquid";
 import type { Asset } from "@/types";
 
 const SCAN_INTERVAL_MS = 5 * 60 * 1000; // 5 min between scans
@@ -33,8 +32,6 @@ export function useAutoTrader(asset: Asset) {
     openPosition, closePosition, openPositions,
     paperBalance, tradingMode,
   } = useStore();
-
-  const hl = useHyperliquid();
 
   const [status, setStatus] = useState<AutoTraderStatus>({
     state: "idle",
@@ -203,14 +200,52 @@ export function useAutoTrader(asset: Asset) {
       const size = positionUsd / entry;
       const posId = `auto_${Date.now()}`;
 
-      // Live mode: sign and submit real order
+      // Live mode: submit real order via agent-key proxy (no wallet needed)
       if (tradingMode === "live") {
         try {
-          addLog(`Setting ${autoTradeLeverage}x leverage on Hyperliquid...`, "info");
-          await hl.setLeverage(asset, autoTradeLeverage);
-          addLog(`Submitting ${direction.toUpperCase()} market order to Hyperliquid...`, "info");
-          await hl.placeMarketOrder({ asset, direction, sizeUsd: positionUsd, currentPrice: entry });
-          addLog(`Live order submitted`, "trade");
+          // Fetch asset index for leverage + order actions
+          const metaRes = await fetch("/api/hl/meta");
+          const meta = await metaRes.json();
+          const assetInfo = meta[asset];
+          if (!assetInfo) throw new Error(`Asset meta not loaded for ${asset}`);
+
+          // 1. Set leverage
+          const leverageAction = {
+            type: "updateLeverage",
+            asset: assetInfo.index,
+            isCross: true,
+            leverage: Math.min(autoTradeLeverage, assetInfo.maxLeverage),
+          };
+          await fetch("/api/hl/trade", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: leverageAction }),
+          });
+
+          // 2. Place market order (1% slippage limit)
+          const isBuy = direction === "long";
+          const limitPx = isBuy ? entry * 1.01 : entry * 0.99;
+          const sz = parseFloat((positionUsd / entry).toFixed(assetInfo.szDecimals));
+          const orderAction = {
+            type: "order",
+            orders: [{
+              a: assetInfo.index,
+              b: isBuy,
+              p: limitPx.toPrecision(5),
+              s: sz.toString(),
+              r: false,
+              t: { limit: { tif: "Ioc" } },
+            }],
+            grouping: "na",
+          };
+          const orderRes = await fetch("/api/hl/trade", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: orderAction }),
+          });
+          const orderData = await orderRes.json();
+          if (orderData.error) throw new Error(orderData.error);
+          addLog(`Live order submitted to Hyperliquid`, "trade");
         } catch (orderErr: any) {
           addLog(`Live order failed: ${orderErr.message}`, "error");
           setStatus((s) => ({ ...s, state: "error", lastSignal: orderErr.message }));
@@ -239,7 +274,7 @@ export function useAutoTrader(asset: Asset) {
     } finally {
       scanningRef.current = false;
     }
-  }, [asset, autoTradeLeverage, emergencyStop, tradingMode, openPosition, addLog, hl.setLeverage, hl.placeMarketOrder]);
+  }, [asset, autoTradeLeverage, emergencyStop, tradingMode, openPosition, addLog]);
 
   // ── Scan timer: only runs when bot is enabled ────────────────────────────
   useEffect(() => {
