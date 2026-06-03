@@ -138,6 +138,11 @@ export async function getOpenOrders(address: string): Promise<HLOpenOrder[]> {
   return infoPost({ type: "openOrders", user: address.toLowerCase() });
 }
 
+// Get user open orders WITH trigger details (triggerPx, orderType, tpsl side, etc.)
+export async function getFrontendOpenOrders(address: string): Promise<any[]> {
+  return infoPost({ type: "frontendOpenOrders", user: address.toLowerCase() });
+}
+
 // Get user trade history
 export async function getUserFills(address: string): Promise<any[]> {
   return infoPost({ type: "userFills", user: address.toLowerCase() });

@@ -13,24 +13,28 @@ import { cn } from "@/lib/utils";
 
 export function DashboardContent() {
   const { selectedAsset, setSelectedAsset, openPositions, aiSignals, chartOverlay } = useStore();
-  const { livePositions } = useHyperliquid();
+  const { livePositions, triggers } = useHyperliquid();
 
   const aiSignal = aiSignals[selectedAsset];
   const activePos = openPositions.find((p) => p.asset === selectedAsset && p.isOpen);
 
   // Live HL position for the selected asset (entry line in live mode)
-  const livePos = livePositions.find((p) => p.coin === ASSETS[selectedAsset]?.hlCoin || p.coin === selectedAsset);
+  const hlCoin = ASSETS[selectedAsset]?.hlCoin ?? selectedAsset;
+  const livePos = livePositions.find((p) => p.coin === hlCoin || p.coin === selectedAsset);
+  const liveTrig = triggers[hlCoin] ?? triggers[selectedAsset];
 
   // What to draw on the chart, in priority order:
   // 1) the trade ticket overlay (matches selected asset)
-  // 2) live position entry  3) paper position  4) AI signal
+  // 2) live position (entry + its TP/SL triggers)  3) paper position  4) AI signal
   const overlayMatches = chartOverlay && chartOverlay.asset === selectedAsset;
   const chartEntry = overlayMatches ? chartOverlay!.entry ?? undefined
     : livePos ? parseFloat(livePos.entryPx)
     : activePos?.entryPrice ?? aiSignal?.suggestedEntry;
   const chartSl = overlayMatches ? chartOverlay!.sl ?? undefined
+    : livePos ? liveTrig?.sl
     : activePos?.stopLoss ?? aiSignal?.suggestedSL;
   const chartTp = overlayMatches ? chartOverlay!.tp ?? undefined
+    : livePos ? liveTrig?.tp
     : activePos?.takeProfit ?? aiSignal?.suggestedTP;
 
   // Quick-access watchlist: defaults + the current selection if it's not in defaults

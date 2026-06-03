@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getUserState, getOpenOrders, getUserFills } from "@/lib/hyperliquid";
+import { getUserState, getFrontendOpenOrders, getUserFills } from "@/lib/hyperliquid";
 import { getIronSession } from "iron-session";
 import { cookies } from "next/headers";
 import { SessionData, sessionOptions } from "@/lib/session";
@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
   try {
     const [state, orders, fills, spotState] = await Promise.all([
       getUserState(address),
-      getOpenOrders(address),
+      getFrontendOpenOrders(address).catch(() => []),
       getUserFills(address).catch(() => []),
       // Also fetch spot balances so UI can detect USDC sitting in spot vs perp
       fetch("https://api.hyperliquid.xyz/info", {

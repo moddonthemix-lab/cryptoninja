@@ -40,6 +40,8 @@ export function useHyperliquid() {
   const [assetMeta, setAssetMeta] = useState<Record<string, AssetMeta>>({});
   const [spotUsdcBalance, setSpotUsdcBalance] = useState<number>(0);
   const [withdrawable, setWithdrawable] = useState<number>(0);
+  // Per-coin TP/SL trigger prices parsed from open trigger orders
+  const [triggers, setTriggers] = useState<Record<string, { tp?: number; sl?: number }>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -66,6 +68,21 @@ export function useHyperliquid() {
       if (typeof accData.spotUsdcBalance === "number") {
         setSpotUsdcBalance(accData.spotUsdcBalance);
       }
+
+      // Parse TP/SL trigger orders (frontendOpenOrders) by coin
+      const orders: any[] = Array.isArray(accData.orders) ? accData.orders : [];
+      const byCoin: Record<string, { tp?: number; sl?: number }> = {};
+      for (const o of orders) {
+        const px = parseFloat(o.triggerPx ?? o.triggerPrice ?? "0");
+        if (!px) continue;
+        const isTp = (o.orderType && /take profit/i.test(o.orderType)) || o.tpsl === "tp";
+        const isSl = (o.orderType && /stop/i.test(o.orderType)) || o.tpsl === "sl";
+        if (!byCoin[o.coin]) byCoin[o.coin] = {};
+        if (isTp) byCoin[o.coin].tp = px;
+        else if (isSl) byCoin[o.coin].sl = px;
+      }
+      setTriggers(byCoin);
+
       if (!meta.error) setAssetMeta(meta);
     } catch (e: any) {
       console.error("HL account fetch:", e.message);
@@ -237,6 +254,7 @@ export function useHyperliquid() {
     assetMeta,
     spotUsdcBalance,
     withdrawable,
+    triggers,
     totalBalance,
     balanceInSpotOnly,
     loading,

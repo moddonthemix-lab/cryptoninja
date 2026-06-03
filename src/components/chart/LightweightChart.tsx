@@ -116,9 +116,9 @@ export const LightweightChart = memo(function LightweightChart({
       });
       priceLinesRef.current.push(line);
     };
-    if (entryPrice) add(entryPrice, "#7c3aed", "Entry", LineStyle.Solid);
-    if (stopLoss) add(stopLoss, "#ef4444", "SL", LineStyle.Dashed);
-    if (takeProfit) add(takeProfit, "#10b981", "TP", LineStyle.Dashed);
+    if (entryPrice) add(entryPrice, "#7c3aed", "Entry", LineStyle.Dotted);
+    if (stopLoss) add(stopLoss, "#ef4444", "SL", LineStyle.Dotted);
+    if (takeProfit) add(takeProfit, "#10b981", "TP", LineStyle.Dotted);
   }, [entryPrice, stopLoss, takeProfit, loading]);
 
   const cfg = ASSETS[asset];

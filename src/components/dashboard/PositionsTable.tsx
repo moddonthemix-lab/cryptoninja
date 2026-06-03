@@ -28,7 +28,7 @@ interface DisplayPosition {
 
 export function PositionsTable() {
   const { openPositions, closedTrades, marketData, closePosition, tradingMode } = useStore();
-  const { livePositions, closeLivePosition, setTpSl } = useHyperliquid();
+  const { livePositions, closeLivePosition, setTpSl, triggers } = useHyperliquid();
   const [activeTab, setActiveTab] = useState<Tab>("Positions");
   const [closing, setClosing] = useState<string | null>(null);
   const [sharePos, setSharePos] = useState<SharePosition | null>(null);
@@ -71,15 +71,16 @@ export function PositionsTable() {
   const positions: DisplayPosition[] = isLive
     ? livePositions.map((p) => {
         const szi = parseFloat(p.szi);
+        const trig = triggers[p.coin] ?? {};
         return {
           id: p.coin,
-          asset: p.coin as Asset,
+          asset: p.coin.replace(/^xyz:/, "") as Asset,
           direction: szi >= 0 ? "long" : "short",
           size: Math.abs(szi),
           entryPrice: parseFloat(p.entryPx),
           leverage: p.leverage?.value ?? 1,
-          stopLoss: null,
-          takeProfit: null,
+          stopLoss: trig.sl ?? null,
+          takeProfit: trig.tp ?? null,
           isLive: true,
           liqPrice: p.liquidationPx ? parseFloat(p.liquidationPx) : null,
           unrealizedPnl: parseFloat(p.unrealizedPnl),
@@ -170,7 +171,7 @@ export function PositionsTable() {
                     <th className="text-left px-3 py-2">Side</th>
                     <th className="text-right px-3 py-2">Entry</th>
                     <th className="text-right px-3 py-2">Mark</th>
-                    <th className="text-right px-3 py-2">{isLive ? "Liq." : "SL / TP"}</th>
+                    <th className="text-right px-3 py-2">SL / TP</th>
                     <th className="text-right px-3 py-2">Size × Lev</th>
                     <th className="text-right px-3 py-2">Margin</th>
                     <th className="text-right px-3 py-2">Live PnL</th>
@@ -235,17 +236,17 @@ export function PositionsTable() {
                             : "—"}
                         </td>
 
-                        {/* Liq price (live) or SL/TP (paper) */}
+                        {/* SL / TP (from triggers for live) — Liq shown if neither set */}
                         <td className="px-3 py-2 text-right font-mono whitespace-nowrap">
-                          {pos.isLive ? (
-                            <span className="text-yellow-400">
-                              {pos.liqPrice ? `$${pos.liqPrice.toFixed(2)}` : "—"}
+                          {pos.isLive && !pos.stopLoss && !pos.takeProfit ? (
+                            <span className="text-yellow-400" title="Liquidation price">
+                              {pos.liqPrice ? `liq $${pos.liqPrice.toFixed(2)}` : "—"}
                             </span>
                           ) : (
                             <>
-                              <span className="text-ninja-red">${pos.stopLoss?.toFixed(2) ?? "—"}</span>
+                              <span className="text-ninja-red">{pos.stopLoss ? `$${pos.stopLoss.toFixed(2)}` : "—"}</span>
                               <span className="text-ninja-muted mx-1">/</span>
-                              <span className="text-ninja-green">${pos.takeProfit?.toFixed(2) ?? "—"}</span>
+                              <span className="text-ninja-green">{pos.takeProfit ? `$${pos.takeProfit.toFixed(2)}` : "—"}</span>
                             </>
                           )}
                         </td>
