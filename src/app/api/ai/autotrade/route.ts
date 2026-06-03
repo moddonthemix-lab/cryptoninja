@@ -8,7 +8,6 @@ const INTERVAL_MS: Record<string, number> = {
   "5m": 300_000,
   "1h": 3_600_000,
   "4h": 14_400_000,
-  "6h": 21_600_000,
   "1d": 86_400_000,
 };
 
@@ -209,16 +208,15 @@ export async function POST(req: NextRequest) {
   try {
     const { asset, leverage = 3 } = await req.json();
 
-    // Fetch all timeframes in parallel — 1H and 6H added
+    // Fetch all timeframes in parallel
     const [
       weeklyCandles, dailyCandles,
-      h6Candles, h4Candles, h1Candles,
+      h4Candles, h1Candles,
       candles5m,
       btcDailyCandles, btcH4Candles,
     ] = await Promise.all([
       fetchCandles(asset, "1d", 21),   // weekly proxy via daily
       fetchCandles(asset, "1d", 5),
-      fetchCandles(asset, "6h", 12),   // 6H — 3 days of bars
       fetchCandles(asset, "4h", 10),
       fetchCandles(asset, "1h", 24),   // 1H — last 24 hours
       fetchCandles(asset, "5m", 30),
@@ -235,22 +233,20 @@ export async function POST(req: NextRequest) {
     // ── TheStrat bar types across all timeframes ──────────────────────────
     const weeklyDir  = getTFDirection(weeklyCandles);
     const dailyDir   = getTFDirection(dailyCandles);
-    const h6Dir      = getTFDirection(h6Candles);
     const h4Dir      = getTFDirection(h4Candles);
     const h1Dir      = getTFDirection(h1Candles);
     const btcDailyDir = getTFDirection(btcDailyCandles);
     const btcH4Dir   = getTFDirection(btcH4Candles);
 
     const dailyBarType = classifyBar(dailyCandles[dailyCandles.length - 1], dailyCandles[dailyCandles.length - 2]);
-    const h6BarType   = h6Candles.length >= 2 ? classifyBar(h6Candles[h6Candles.length - 1], h6Candles[h6Candles.length - 2]) : "1";
     const h4BarType   = classifyBar(h4Candles[h4Candles.length - 1], h4Candles[h4Candles.length - 2]);
-    const h1BarType   = h1Candles.length >= 2 ? classifyBar(h1Candles[h1Candles.length - 1], h1Candles[h1Candles.length - 2]) : "1";
+    const h1BarType   = h1Candles.length >= 2 ? classifyBar(h1Candles[h1Candles.length - 1], h1Candles[h1Candles.length - 2]) : "1" as BarType;
 
     // FTFC: weekly + daily gate (core TheStrat requirement)
     const assetFTFC = calcFTFC(weeklyDir, dailyDir);
 
-    // Count how many intraday TFs agree with FTFC direction (1H, 4H, 6H)
-    const intradayTFs = [h1Dir, h4Dir, h6Dir];
+    // Count how many intraday TFs agree with FTFC direction (1H, 4H)
+    const intradayTFs = [h1Dir, h4Dir];
     const intradayAgreement = intradayTFs.filter(
       d => (assetFTFC === "bullish" && d === "bullish") || (assetFTFC === "bearish" && d === "bearish")
     ).length;
@@ -265,7 +261,6 @@ export async function POST(req: NextRequest) {
 
     // ── Prior highs/lows across all timeframes ────────────────────────────
     const priorDay  = priorHL(dailyCandles);
-    const priorH6   = priorHL(h6Candles);
     const priorH4   = priorHL(h4Candles);
     const priorH1   = priorHL(h1Candles);
 
@@ -277,12 +272,11 @@ export async function POST(req: NextRequest) {
     const bhDir = assetFTFC === "bullish" ? "bullish" : "bearish" as const;
     const bh = {
       daily: checkBreakAndHold(candles5m, assetFTFC === "bullish" ? priorDay.high : priorDay.low, bhDir),
-      h6:    h6Candles.length >= 2 && checkBreakAndHold(candles5m, assetFTFC === "bullish" ? priorH6.high  : priorH6.low,  bhDir),
       h4:    checkBreakAndHold(candles5m, assetFTFC === "bullish" ? priorH4.high  : priorH4.low,  bhDir),
       h1:    h1Candles.length >= 2 && checkBreakAndHold(candles5m, assetFTFC === "bullish" ? priorH1.high  : priorH1.low,  bhDir),
     };
     // At least the daily OR two intraday TFs must confirm break-and-hold
-    const breakAndHoldConfirmed = bh.daily || ([bh.h6, bh.h4, bh.h1].filter(Boolean).length >= 2);
+    const breakAndHoldConfirmed = bh.daily || ([bh.h4, bh.h1].filter(Boolean).length >= 2);
 
     // ── Goldbach: multi-timeframe dealing ranges and bias ─────────────────
     // Main dealing range uses daily ADR (macro view)
@@ -333,8 +327,8 @@ export async function POST(req: NextRequest) {
     if (!breakAndHoldConfirmed) {
       return NextResponse.json({
         shouldTrade: false,
-        reason: `FTFC ${assetFTFC} but break-and-hold not confirmed on any key level (daily=${bh.daily}, 6H=${bh.h6}, 4H=${bh.h4}, 1H=${bh.h1})`,
-        ftfc: assetFTFC, weeklyDir, dailyDir, h4Dir, h1Dir, h6Dir,
+        reason: `FTFC ${assetFTFC} but break-and-hold not confirmed on any key level (daily=${bh.daily}, 4H=${bh.h4}, 1H=${bh.h1})`,
+        ftfc: assetFTFC, weeklyDir, dailyDir, h4Dir, h1Dir,
         priorDayHigh: priorDay.high, priorDayLow: priorDay.low,
         priorH4High: priorH4.high, priorH4Low: priorH4.low,
         priorH1High: priorH1.high, priorH1Low: priorH1.low,
@@ -362,11 +356,10 @@ ASSET: ${asset}/USDT  |  PRICE: $${currentPrice.toFixed(2)}  |  LEVERAGE: ${leve
 === THESTRAT MULTI-TIMEFRAME ===
 Weekly  : ${weeklyDir}
 Daily   : ${dailyDir}  [bar: ${dailyBarType}]
-6H      : ${h6Dir}    [bar: ${h6BarType}]
 4H      : ${h4Dir}    [bar: ${h4BarType}]
 1H      : ${h1Dir}    [bar: ${h1BarType}]
 FTFC    : ${assetFTFC.toUpperCase()}
-Intraday alignment (1H/4H/6H agree): ${intradayAgreement}/3 TFs
+Intraday alignment (1H/4H agree): ${intradayAgreement}/2 TFs
 
 === BTC MARKET FILTER ===
 BTC FTFC : ${btcFTFC.toUpperCase()}
@@ -375,7 +368,6 @@ Alignment: ${btcAgreesWithAsset ? "AGREES ✓" : btcConflicts ? "CONFLICTS ✗" 
 === MULTI-TF KEY LEVELS ===
 priorWeekHigh: $${priorWeekHigh.toFixed(2)} / Low: $${priorWeekLow.toFixed(2)}
 priorDayHigh : $${priorDay.high.toFixed(2)} / Low: $${priorDay.low.toFixed(2)}  — 5m BnH: ${bh.daily ? "✓" : "✗"}
-prior6H High : $${priorH6.high.toFixed(2)} / Low: $${priorH6.low.toFixed(2)}   — 5m BnH: ${bh.h6 ? "✓" : "✗"}
 prior4H High : $${priorH4.high.toFixed(2)} / Low: $${priorH4.low.toFixed(2)}   — 5m BnH: ${bh.h4 ? "✓" : "✗"}
 prior1H High : $${priorH1.high.toFixed(2)} / Low: $${priorH1.low.toFixed(2)}   — 5m BnH: ${bh.h1 ? "✓" : "✗"}
 Break-and-hold confirmed: ${breakAndHoldConfirmed ? "YES ✓" : "NO ✗"}
@@ -419,7 +411,7 @@ Highest confidence: FTFC ✓ + intraday TFs agree + GB bias agrees + at GB level
     if (!process.env.ANTHROPIC_API_KEY) {
       const direction = assetFTFC === "bullish" ? "long" : "short";
       let confidence = 55;
-      confidence += intradayAgreement * 7;        // up to +21 for 1H/4H/6H
+      confidence += intradayAgreement * 10;       // up to +20 for 1H/4H
       confidence += gbAgreement * 5;              // up to +15 for GB TF bias
       if (btcAgreesWithAsset) confidence += 10;
       if (btcConflicts) confidence -= 10;
@@ -438,7 +430,7 @@ Highest confidence: FTFC ✓ + intraday TFs agree + GB bias agrees + at GB level
 
       const slPricePct = 0.30 / leverage;
       const tpPricePct = tpPct / 100 / leverage;
-      const isSwing = (dailyBarType === "2U" || dailyBarType === "2D") && intradayAgreement >= 2 && btcAgreesWithAsset;
+      const isSwing = (dailyBarType === "2U" || dailyBarType === "2D") && intradayAgreement === 2 && btcAgreesWithAsset;
 
       return NextResponse.json({
         shouldTrade: true, direction, leverage,
@@ -449,10 +441,9 @@ Highest confidence: FTFC ✓ + intraday TFs agree + GB bias agrees + at GB level
         tp: direction === "long" ? currentPrice * (1 + tpPricePct) : currentPrice * (1 - tpPricePct),
         reasoning: `Rule-based: FTFC ${assetFTFC}, intraday ${intradayAgreement}/3, GB ${gbAgreement}/3, BTC ${btcFTFC}.${atGBLevel ? ` At ${nearestGB.name}.` : ""}${stopRun.detected ? " Stop run." : ""}${inManipulation ? " London." : ""}`,
         trailTriggerPct: 20, trailRetreatPct: 35,
-        ftfc: assetFTFC, weeklyDir, dailyDir, h6Dir, h4Dir, h1Dir,
-        dailyBarType, h6BarType, h4BarType, h1BarType, btcFTFC,
+        ftfc: assetFTFC, weeklyDir, dailyDir, h4Dir, h1Dir,
+        dailyBarType, h4BarType, h1BarType, btcFTFC,
         priorDayHigh: priorDay.high, priorDayLow: priorDay.low,
-        priorH6High: priorH6.high, priorH6Low: priorH6.low,
         priorH4High: priorH4.high, priorH4Low: priorH4.low,
         priorH1High: priorH1.high, priorH1Low: priorH1.low,
         priorWeekHigh, priorWeekLow, intradayAgreement, gbAgreement,
@@ -469,7 +460,7 @@ All pre-conditions passed: FTFC=${assetFTFC}, break-and-hold confirmed.
 ${contextBlock}
 
 DECISION RULES:
-TheStrat direction: FTFC (weekly+daily) is the master bias. Intraday TFs (1H/4H/6H) add conviction.
+TheStrat direction: FTFC (weekly+daily) is the master bias. Intraday TFs (1H/4H) add conviction.
 Goldbach entries: enter at GB levels (OB=11/89%, FVG=17/83%, Breaker=41/59%, Equil=47/53%).
 Goldbach direction: when multiple TF GB biases (discount/premium) agree with FTFC, higher confidence.
 GB TP: OB→Breaker, FVG→Breaker, Breaker→OB, Equil→opposite Equil, LV→Equil.
@@ -513,7 +504,7 @@ Return ONLY this JSON:
       return NextResponse.json({
         shouldTrade: false,
         reason: ai.reasoning ?? "Claude declined",
-        ftfc: assetFTFC, weeklyDir, dailyDir, h6Dir, h4Dir, h1Dir,
+        ftfc: assetFTFC, weeklyDir, dailyDir, h4Dir, h1Dir,
         dailyBarType, h4BarType, h1BarType, btcFTFC,
         goldbachLevel: nearestGB.name, gbBiasDaily, gbBiasH4, gbBiasH1, amdPhase,
       });
@@ -534,11 +525,10 @@ Return ONLY this JSON:
       reasoning: ai.reasoning ?? "",
       trailTriggerPct: ai.trailTriggerPct ?? 20,
       trailRetreatPct: ai.trailRetreatPct ?? 35,
-      ftfc: assetFTFC, weeklyDir, dailyDir, h6Dir, h4Dir, h1Dir,
-      dailyBarType, h6BarType, h4BarType, h1BarType,
+      ftfc: assetFTFC, weeklyDir, dailyDir, h4Dir, h1Dir,
+      dailyBarType, h4BarType, h1BarType,
       btcFTFC, btcAgreesWithAsset, btcConflicts,
       priorDayHigh: priorDay.high, priorDayLow: priorDay.low,
-      priorH6High: priorH6.high, priorH6Low: priorH6.low,
       priorH4High: priorH4.high, priorH4Low: priorH4.low,
       priorH1High: priorH1.high, priorH1Low: priorH1.low,
       priorWeekHigh, priorWeekLow, distToNextKeyLevelPct,

@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { useStore } from "@/store/useStore";
 import { TradingViewWidget } from "@/components/chart/TradingViewWidget";
 import { StatsGrid } from "./StatsGrid";
@@ -13,18 +12,8 @@ import { cn } from "@/lib/utils";
 
 const ALL_ASSETS: Asset[] = ["BTC", "ETH", "HYPE", "SOL"];
 
-const TIMEFRAMES = [
-  { label: "1m", value: "1m" },
-  { label: "5m", value: "5m" },
-  { label: "15m", value: "15m" },
-  { label: "1h", value: "1h" },
-  { label: "4h", value: "4h" },
-  { label: "1D", value: "1d" },
-];
-
 export function DashboardContent() {
   const { selectedAsset, setSelectedAsset, marketData, openPositions, aiSignals } = useStore();
-  const [timeframe, setTimeframe] = useState("1h");
 
   const aiSignal = aiSignals[selectedAsset];
   const activePos = openPositions.find((p) => p.asset === selectedAsset && p.isOpen);
@@ -77,28 +66,9 @@ export function DashboardContent() {
 
         {/* Chart column */}
         <div className="xl:col-span-3 flex flex-col gap-2">
-          {/* Timeframe selector */}
-          <div className="flex gap-1">
-            {TIMEFRAMES.map((tf) => (
-              <button
-                key={tf.value}
-                onClick={() => setTimeframe(tf.value)}
-                className={cn(
-                  "px-3 py-1 rounded text-xs font-mono transition-all",
-                  timeframe === tf.value
-                    ? "bg-ninja-accent text-white"
-                    : "bg-ninja-card border border-ninja-border text-ninja-muted hover:text-ninja-text"
-                )}
-              >
-                {tf.label}
-              </button>
-            ))}
-          </div>
-
-          {/* TradingView chart */}
+          {/* TradingView chart — use the built-in toolbar to change timeframes */}
           <TradingViewWidget
             asset={selectedAsset}
-            timeframe={timeframe}
             height={520}
             entryPrice={activePos?.entryPrice ?? aiSignal?.suggestedEntry}
             stopLoss={activePos?.stopLoss ?? aiSignal?.suggestedSL}
