@@ -9,12 +9,13 @@ import { cn } from "@/lib/utils";
 export function HyperliquidAccount() {
   const { isConnected } = useAccount();
   const { tradingMode } = useStore();
-  const { account, livePositions, totalBalance, spotUsdcBalance, balanceInSpotOnly, loading, refreshAccount } = useHyperliquid();
+  const { account, livePositions, totalBalance, spotUsdcBalance, balanceInSpotOnly, withdrawable, loading, refreshAccount } = useHyperliquid();
 
   if (tradingMode !== "live") return null;
 
   const equity = totalBalance > 0 ? totalBalance : null;
-  const available = account ? parseFloat(account.withdrawable) : null;
+  // withdrawable = top-level HL field; for spot-only accounts use spotUsdcBalance
+  const available = balanceInSpotOnly ? spotUsdcBalance : (account ? withdrawable : null);
   const marginUsed = account ? parseFloat(account.totalMarginUsed) : null;
 
   return (

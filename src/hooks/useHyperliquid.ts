@@ -1,14 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useSignTypedData, useAccount } from "wagmi";
+import { useAccount } from "wagmi";
 import { useStore } from "@/store/useStore";
 import {
   buildOrderAction, buildSetLeverageAction, buildCancelAction, HL_COINS,
 } from "@/lib/hyperliquid";
-import {
-  HL_L1_DOMAIN, HL_AGENT_TYPES, computeConnectionId, buildPhantomAgent, splitSignature,
-} from "@/lib/hl-signing";
 import type { Asset } from "@/types";
 
 export interface HLAccountSummary {
@@ -35,14 +32,13 @@ interface AssetMeta {
 }
 
 export function useHyperliquid() {
-  const { address, isConnected } = useAccount();
+  const { address } = useAccount();
   const { tradingMode } = useStore();
-  const { signTypedDataAsync } = useSignTypedData();
-
   const [account, setAccount] = useState<HLAccountSummary | null>(null);
   const [livePositions, setLivePositions] = useState<HLLivePosition[]>([]);
   const [assetMeta, setAssetMeta] = useState<Record<string, AssetMeta>>({});
   const [spotUsdcBalance, setSpotUsdcBalance] = useState<number>(0);
+  const [withdrawable, setWithdrawable] = useState<number>(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -58,6 +54,8 @@ export function useHyperliquid() {
 
       if (accData.state?.crossMarginSummary) {
         setAccount(accData.state.crossMarginSummary);
+        // withdrawable is top-level in the HL response, not inside crossMarginSummary
+        setWithdrawable(parseFloat(accData.state.withdrawable ?? "0") || 0);
         setLivePositions(
           (accData.state.assetPositions as Array<{ position: HLLivePosition }>)
             .map((p) => p.position)
@@ -80,30 +78,17 @@ export function useHyperliquid() {
     return () => clearInterval(interval);
   }, [refreshAccount]);
 
-  // Core: sign any HL action and submit via our server proxy
+  // Submit any HL action — server signs with the API wallet key (no wallet popup needed)
   const submitAction = useCallback(async (action: object): Promise<any> => {
-    if (!isConnected || !address) throw new Error("Wallet not connected");
-
-    const nonce = Date.now();
-    const connectionId = computeConnectionId(action, nonce);
-    const sig = await signTypedDataAsync({
-      domain: HL_L1_DOMAIN,
-      types: HL_AGENT_TYPES,
-      primaryType: "Agent",
-      message: buildPhantomAgent(connectionId),
-    });
-
-    const signature = splitSignature(sig);
     const res = await fetch("/api/hl/trade", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action, nonce, signature }),
+      body: JSON.stringify({ action }),
     });
-
     const data = await res.json();
     if (!res.ok || data.error) throw new Error(data.error ?? "Trade failed");
     return data;
-  }, [isConnected, address, signTypedDataAsync]);
+  }, []);
 
   // Set leverage (must be done before first order on a new asset)
   const setLeverage = useCallback(async (asset: Asset, leverage: number, isCross = true) => {
@@ -223,6 +208,7 @@ export function useHyperliquid() {
     livePositions,
     assetMeta,
     spotUsdcBalance,
+    withdrawable,
     totalBalance,
     balanceInSpotOnly,
     loading,
