@@ -9,11 +9,11 @@ import { cn } from "@/lib/utils";
 export function HyperliquidAccount() {
   const { isConnected } = useAccount();
   const { tradingMode } = useStore();
-  const { account, livePositions, loading, refreshAccount } = useHyperliquid();
+  const { account, livePositions, totalBalance, spotUsdcBalance, balanceInSpotOnly, loading, refreshAccount } = useHyperliquid();
 
-  if (!isConnected || tradingMode !== "live") return null;
+  if (tradingMode !== "live") return null;
 
-  const equity = account ? parseFloat(account.accountValue) : null;
+  const equity = totalBalance > 0 ? totalBalance : null;
   const available = account ? parseFloat(account.withdrawable) : null;
   const marginUsed = account ? parseFloat(account.totalMarginUsed) : null;
 
@@ -63,8 +63,15 @@ export function HyperliquidAccount() {
         </div>
       )}
 
+      {/* Spot balance note — user has USDC in spot, needs to move to perp */}
+      {balanceInSpotOnly && equity !== null && (
+        <div className="text-xs text-yellow-400 bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-2 leading-relaxed">
+          Your USDC is in the <strong>spot wallet</strong>. For leveraged perp trading, transfer it to the <strong>Perp account</strong> on Hyperliquid. For unified margin accounts, spot funds trade automatically.
+        </div>
+      )}
+
       {/* Deposit prompt if equity is low */}
-      {(equity === null || equity < 10) && (
+      {(equity === null || equity < 5) && (
         <a
           href="https://app.hyperliquid.xyz/trade"
           target="_blank"

@@ -42,6 +42,7 @@ export function useHyperliquid() {
   const [account, setAccount] = useState<HLAccountSummary | null>(null);
   const [livePositions, setLivePositions] = useState<HLLivePosition[]>([]);
   const [assetMeta, setAssetMeta] = useState<Record<string, AssetMeta>>({});
+  const [spotUsdcBalance, setSpotUsdcBalance] = useState<number>(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -62,6 +63,9 @@ export function useHyperliquid() {
             .map((p) => p.position)
             .filter((p) => parseFloat(p.szi) !== 0)
         );
+      }
+      if (typeof accData.spotUsdcBalance === "number") {
+        setSpotUsdcBalance(accData.spotUsdcBalance);
       }
       if (!meta.error) setAssetMeta(meta);
     } catch (e: any) {
@@ -209,10 +213,18 @@ export function useHyperliquid() {
     }
   }, [assetMeta, tradingMode, submitAction, refreshAccount]);
 
+  // Total available balance: perp equity OR spot USDC (unified accounts)
+  const perpEquity = account ? parseFloat(account.accountValue) : 0;
+  const totalBalance = perpEquity > 0 ? perpEquity : spotUsdcBalance;
+  const balanceInSpotOnly = perpEquity === 0 && spotUsdcBalance > 0;
+
   return {
     account,
     livePositions,
     assetMeta,
+    spotUsdcBalance,
+    totalBalance,
+    balanceInSpotOnly,
     loading,
     error,
     isLive: tradingMode === "live",

@@ -10,13 +10,12 @@ import { useState, useEffect } from "react";
 
 export function LiveTradingSetup() {
   const { tradingMode, setTradingMode } = useStore();
-  const { account } = useHyperliquid();
+  const { account, totalBalance, spotUsdcBalance, balanceInSpotOnly } = useHyperliquid();
 
   const [agentConfigured, setAgentConfigured] = useState<boolean | null>(null);
   const [agentAddress, setAgentAddress] = useState<string | null>(null);
 
-  const hlEquity = account ? parseFloat(account.accountValue) : null;
-  const hlFunded = hlEquity !== null && hlEquity >= 1;
+  const hlFunded = totalBalance >= 5;
   const isLive = tradingMode === "live";
 
   useEffect(() => {
@@ -53,8 +52,10 @@ export function LiveTradingSetup() {
       label: "Hyperliquid account funded",
       done: hlFunded,
       detail: hlFunded
-        ? `$${hlEquity?.toFixed(2)} equity — ready to trade`
-        : "Deposit USDC on Hyperliquid (minimum $5)",
+        ? `$${totalBalance.toFixed(2)} available${balanceInSpotOnly ? " (spot — unified margin)" : " (perp)"}`
+        : spotUsdcBalance > 0
+          ? `$${spotUsdcBalance.toFixed(2)} USDC in spot wallet — transfer to Perp on Hyperliquid`
+          : "Deposit USDC on Hyperliquid (minimum $5)",
       action: !hlFunded ? (
         <a
           href="https://app.hyperliquid.xyz/trade"

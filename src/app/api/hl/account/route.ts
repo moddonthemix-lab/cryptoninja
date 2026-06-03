@@ -17,13 +17,22 @@ export async function GET(req: NextRequest) {
   if (!address) return NextResponse.json({ error: "No address" }, { status: 400 });
 
   try {
-    const [state, orders, fills] = await Promise.all([
+    const [state, orders, fills, spotState] = await Promise.all([
       getUserState(address),
       getOpenOrders(address),
       getUserFills(address).catch(() => []),
+      // Also fetch spot balances so UI can detect USDC sitting in spot vs perp
+      fetch("https://api.hyperliquid.xyz/info", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "spotClearinghouseState", user: address.toLowerCase() }),
+      }).then(r => r.json()).catch(() => ({ balances: [] })),
     ]);
 
-    return NextResponse.json({ state, orders, fills });
+    const spotUsdc = (spotState.balances ?? []).find((b: any) => b.coin === "USDC");
+    const spotUsdcBalance = spotUsdc ? parseFloat(spotUsdc.total) : 0;
+
+    return NextResponse.json({ state, orders, fills, spotUsdcBalance });
   } catch (e: any) {
     console.error("HL account error:", e.message);
     return NextResponse.json({ error: e.message }, { status: 500 });
