@@ -2,7 +2,6 @@
 
 import { useStore } from "@/store/useStore";
 import { cn } from "@/lib/utils";
-import { TrendingUp, TrendingDown, Wallet, Activity, BarChart2, Target } from "lucide-react";
 
 export function StatsGrid() {
   const { paperBalance, openPositions, closedTrades, tradingMode, activeStrategyId, strategies } = useStore();
@@ -15,61 +14,49 @@ export function StatsGrid() {
 
   const stats = [
     {
-      label: tradingMode === "paper" ? "Paper Balance" : "Balance",
-      value: `$${paperBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
-      icon: Wallet,
+      label: tradingMode === "paper" ? "Paper Bal" : "Balance",
+      value: `$${paperBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       color: "text-ninja-accent",
-      bg: "bg-ninja-accent/10",
     },
     {
-      label: "Total PnL",
+      label: "PnL",
       value: `${totalPnl >= 0 ? "+" : ""}$${Math.abs(totalPnl).toFixed(2)}`,
-      icon: totalPnl >= 0 ? TrendingUp : TrendingDown,
       color: totalPnl >= 0 ? "text-ninja-green" : "text-ninja-red",
-      bg: totalPnl >= 0 ? "bg-green-500/10" : "bg-red-500/10",
     },
     {
       label: "Win Rate",
       value: `${winRate.toFixed(1)}%`,
-      icon: Target,
       color: winRate >= 50 ? "text-ninja-green" : "text-ninja-red",
-      bg: winRate >= 50 ? "bg-green-500/10" : "bg-red-500/10",
     },
     {
-      label: "Open Positions",
+      label: "Open",
       value: openPositions.filter((p) => p.isOpen).length.toString(),
-      icon: Activity,
       color: "text-ninja-yellow",
-      bg: "bg-yellow-500/10",
     },
     {
-      label: "Total Trades",
+      label: "Trades",
       value: totalClosed.toString(),
-      icon: BarChart2,
       color: "text-ninja-muted",
-      bg: "bg-ninja-border/30",
     },
     {
-      label: "Active Strategy",
+      label: "Strategy",
       value: activeStrategy?.name ?? "None",
-      icon: Activity,
       color: activeStrategy ? "text-ninja-green" : "text-ninja-muted",
-      bg: activeStrategy ? "bg-green-500/10" : "bg-ninja-border/30",
     },
   ];
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-      {stats.map((s) => (
+    <div className="flex items-center gap-0 bg-ninja-card border border-ninja-border rounded-lg overflow-x-auto flex-shrink-0">
+      {stats.map((s, i) => (
         <div
           key={s.label}
-          className="bg-ninja-card border border-ninja-border rounded-xl p-3"
+          className={cn(
+            "flex items-center gap-2 px-3 py-2 flex-shrink-0",
+            i < stats.length - 1 && "border-r border-ninja-border/60"
+          )}
         >
-          <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center mb-2", s.bg)}>
-            <s.icon size={14} className={s.color} />
-          </div>
-          <div className={cn("font-bold text-sm font-mono truncate", s.color)}>{s.value}</div>
-          <div className="text-ninja-muted text-xs mt-0.5">{s.label}</div>
+          <span className="text-ninja-muted text-xs whitespace-nowrap">{s.label}</span>
+          <span className={cn("font-mono font-bold text-xs whitespace-nowrap", s.color)}>{s.value}</span>
         </div>
       ))}
     </div>
