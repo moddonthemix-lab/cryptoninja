@@ -5,8 +5,8 @@ import { useStore } from "@/store/useStore";
 import { useHyperliquid } from "@/hooks/useHyperliquid";
 import type { Asset } from "@/types";
 
-const SCAN_INTERVAL_MS = 5 * 60 * 1000; // scan every 5 minutes
-const PRICE_POLL_MS = 10 * 1000;         // check SL/TP/trail every 10 seconds
+const SCAN_INTERVAL_MS = 5 * 60 * 1000; // 5 min between scans
+const PRICE_POLL_MS = 10 * 1000;         // 10 s price check
 
 export interface AutoTraderStatus {
   state: "idle" | "scanning" | "in_position" | "error";
@@ -21,8 +21,8 @@ export interface AutoTraderStatus {
 // Per-position trailing stop metadata (lives only in memory)
 const trailMeta: Record<string, {
   peakPrice: number;
-  trailTriggerPct: number; // % margin profit to activate trailing
-  trailRetreatPct: number; // % retrace from peak to close
+  trailTriggerPct: number;
+  trailRetreatPct: number;
   leverage: number;
   direction: "long" | "short";
 }> = {};
@@ -30,7 +30,7 @@ const trailMeta: Record<string, {
 export function useAutoTrader(asset: Asset) {
   const {
     autoTradeEnabled, autoTradeLeverage, emergencyStop,
-    openPosition, closePosition, openPositions, marketData,
+    openPosition, closePosition, openPositions,
     paperBalance, tradingMode,
   } = useStore();
 
@@ -46,121 +46,125 @@ export function useAutoTrader(asset: Asset) {
     log: [],
   });
 
-  const scanTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const priceTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const scanningRef = useRef(false);
 
-  // Reset scan state when asset changes so we don't get stuck in error/scanning
+  // Reset on asset change so stale error/scan state doesn't carry over
   useEffect(() => {
     scanningRef.current = false;
-    setStatus((s) => ({ ...s, state: "idle", lastSignal: null, currentPnlPct: null, peakPnlPct: null, trailActive: false }));
+    setStatus((s) => ({
+      ...s, state: "idle", lastSignal: null,
+      currentPnlPct: null, peakPnlPct: null, trailActive: false,
+    }));
   }, [asset]);
 
   const addLog = useCallback((msg: string, type: AutoTraderStatus["log"][0]["type"] = "info") => {
-    const entry = { time: new Date().toLocaleTimeString(), msg, type };
-    setStatus((s) => ({ ...s, log: [entry, ...s.log].slice(0, 60) }));
+    setStatus((s) => ({
+      ...s,
+      log: [{ time: new Date().toLocaleTimeString(), msg, type }, ...s.log].slice(0, 60),
+    }));
   }, []);
 
-  // ── Price monitor: check SL/TP/trailing stop every 10s ──
-  const monitorPrices = useCallback(() => {
-    const positions = useStore.getState().openPositions.filter((p) => p.isOpen && p.asset === asset);
-    const price = useStore.getState().marketData[asset]?.price;
-    if (!price || positions.length === 0) return;
+  // ── ALWAYS-ON price monitor ──────────────────────────────────────────────
+  // Runs every 10 s regardless of autoTradeEnabled so SL/TP fire even
+  // when the bot is toggled off or a different asset is selected.
+  // Checks ALL open positions across ALL assets.
+  useEffect(() => {
+    const monitor = () => {
+      const allPositions = useStore.getState().openPositions.filter((p) => p.isOpen);
+      if (allPositions.length === 0) return;
 
-    for (const pos of positions) {
-      const meta = trailMeta[pos.id];
-      const direction = pos.direction as "long" | "short";
+      const md = useStore.getState().marketData;
 
-      // Unrealized P&L as % of margin
-      const priceDiff = direction === "long" ? price - pos.entryPrice : pos.entryPrice - price;
-      const pnlPct = (priceDiff / pos.entryPrice) * 100 * pos.leverage;
+      for (const pos of allPositions) {
+        const price = md[pos.asset as Asset]?.price;
+        if (!price) continue;
 
-      // Hard SL (30% of margin)
-      if (pnlPct <= -30) {
-        closePosition(pos.id, price, "sl");
-        if (meta) delete trailMeta[pos.id];
-        addLog(`🔴 SL hit on ${asset} @ $${price.toFixed(2)} (−30% margin)`, "sl");
-        setStatus((s) => ({ ...s, state: "idle", currentPnlPct: null, peakPnlPct: null, trailActive: false }));
-        return;
-      }
+        const direction = pos.direction as "long" | "short";
+        const priceDiff = direction === "long" ? price - pos.entryPrice : pos.entryPrice - price;
+        const pnlPct = (priceDiff / pos.entryPrice) * 100 * pos.leverage;
+        const meta = trailMeta[pos.id];
+        const isCurrentAsset = pos.asset === asset;
 
-      // Hard TP (from original tp price)
-      if (direction === "long" && price >= pos.takeProfit) {
-        closePosition(pos.id, price, "tp");
-        if (meta) delete trailMeta[pos.id];
-        addLog(`🟢 TP hit on ${asset} @ $${price.toFixed(2)} (+${pnlPct.toFixed(1)}% margin)`, "tp");
-        setStatus((s) => ({ ...s, state: "idle", currentPnlPct: null, peakPnlPct: null, trailActive: false }));
-        return;
-      }
-      if (direction === "short" && price <= pos.takeProfit) {
-        closePosition(pos.id, price, "tp");
-        if (meta) delete trailMeta[pos.id];
-        addLog(`🟢 TP hit on ${asset} @ $${price.toFixed(2)} (+${pnlPct.toFixed(1)}% margin)`, "tp");
-        setStatus((s) => ({ ...s, state: "idle", currentPnlPct: null, peakPnlPct: null, trailActive: false }));
-        return;
-      }
-
-      // Trailing stop
-      if (meta) {
-        // Update peak
-        if (pnlPct > (meta.peakPrice === pos.entryPrice ? 0 :
-          (direction === "long"
-            ? (meta.peakPrice - pos.entryPrice) / pos.entryPrice * 100 * meta.leverage
-            : (pos.entryPrice - meta.peakPrice) / pos.entryPrice * 100 * meta.leverage)
-        )) {
-          meta.peakPrice = price;
-        }
-
-        const peakPnlPct = (direction === "long"
-          ? (meta.peakPrice - pos.entryPrice) / pos.entryPrice
-          : (pos.entryPrice - meta.peakPrice) / pos.entryPrice
-        ) * 100 * meta.leverage;
-
-        const trailActive = peakPnlPct >= meta.trailTriggerPct;
-
-        setStatus((s) => ({
-          ...s,
-          state: "in_position",
-          currentPnlPct: pnlPct,
-          peakPnlPct,
-          trailActive,
-        }));
-
-        if (trailActive) {
-          // Retreat from peak
-          const retreatAmount = peakPnlPct * (meta.trailRetreatPct / 100);
-          const trailStopPnlPct = peakPnlPct - retreatAmount;
-
-          if (pnlPct <= trailStopPnlPct && pnlPct > 0) {
-            closePosition(pos.id, price, "tp");
-            delete trailMeta[pos.id];
-            addLog(
-              `🔒 Trail stop triggered on ${asset} @ $${price.toFixed(2)} — locked in +${pnlPct.toFixed(1)}% (peak was +${peakPnlPct.toFixed(1)}%)`,
-              "trail"
-            );
+        // ── Hard SL: -30% of margin ──
+        if (pnlPct <= -30) {
+          closePosition(pos.id, price, "sl");
+          if (meta) delete trailMeta[pos.id];
+          addLog(`SL hit on ${pos.asset} @ $${price.toFixed(2)} (−30% margin)`, "sl");
+          if (isCurrentAsset) {
             setStatus((s) => ({ ...s, state: "idle", currentPnlPct: null, peakPnlPct: null, trailActive: false }));
           }
+          continue; // check remaining positions
         }
-      } else {
-        setStatus((s) => ({
-          ...s,
-          state: "in_position",
-          currentPnlPct: pnlPct,
-          peakPnlPct: Math.max(s.peakPnlPct ?? 0, pnlPct),
-          trailActive: false,
-        }));
+
+        // ── Hard TP: hit the target price ──
+        const tpHit = direction === "long" ? price >= pos.takeProfit : price <= pos.takeProfit;
+        if (tpHit) {
+          closePosition(pos.id, price, "tp");
+          if (meta) delete trailMeta[pos.id];
+          addLog(`TP hit on ${pos.asset} @ $${price.toFixed(2)} (+${pnlPct.toFixed(1)}% margin)`, "tp");
+          if (isCurrentAsset) {
+            setStatus((s) => ({ ...s, state: "idle", currentPnlPct: null, peakPnlPct: null, trailActive: false }));
+          }
+          continue;
+        }
+
+        // ── Trailing stop + status update (selected asset only) ──
+        if (!isCurrentAsset) continue;
+
+        if (meta) {
+          // Update peak price
+          const currentPeakPnl = direction === "long"
+            ? (meta.peakPrice - pos.entryPrice) / pos.entryPrice * 100 * meta.leverage
+            : (pos.entryPrice - meta.peakPrice) / pos.entryPrice * 100 * meta.leverage;
+          if (pnlPct > currentPeakPnl) meta.peakPrice = price;
+
+          const peakPnlPct = direction === "long"
+            ? (meta.peakPrice - pos.entryPrice) / pos.entryPrice * 100 * meta.leverage
+            : (pos.entryPrice - meta.peakPrice) / pos.entryPrice * 100 * meta.leverage;
+
+          const trailActive = peakPnlPct >= meta.trailTriggerPct;
+          setStatus((s) => ({ ...s, state: "in_position", currentPnlPct: pnlPct, peakPnlPct, trailActive }));
+
+          if (trailActive) {
+            const trailStopPnlPct = peakPnlPct * (1 - meta.trailRetreatPct / 100);
+            if (pnlPct <= trailStopPnlPct && pnlPct > 0) {
+              closePosition(pos.id, price, "tp");
+              delete trailMeta[pos.id];
+              addLog(
+                `Trail stop on ${pos.asset} @ $${price.toFixed(2)} — locked +${pnlPct.toFixed(1)}% (peak +${peakPnlPct.toFixed(1)}%)`,
+                "trail"
+              );
+              setStatus((s) => ({ ...s, state: "idle", currentPnlPct: null, peakPnlPct: null, trailActive: false }));
+            }
+          }
+        } else {
+          setStatus((s) => ({
+            ...s,
+            state: "in_position",
+            currentPnlPct: pnlPct,
+            peakPnlPct: Math.max(s.peakPnlPct ?? 0, pnlPct),
+            trailActive: false,
+          }));
+        }
       }
-    }
+    };
+
+    const timer = setInterval(monitor, PRICE_POLL_MS);
+    monitor(); // run immediately on mount / asset change
+    return () => clearInterval(timer);
+    // closePosition and addLog are stable refs; asset used for status routing
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [asset, closePosition, addLog]);
 
-  // ── Scanner: ask Claude every 5 minutes ──
+  // ── Scanner: ask Claude/TheStrat every 5 min ────────────────────────────
   const runScan = useCallback(async () => {
     if (scanningRef.current || emergencyStop) return;
 
-    // Wait until all current positions on this asset are closed before opening another
-    // (prevents stacking unlimited positions — one active trade per asset at a time)
-    const openCount = useStore.getState().openPositions.filter((p) => p.isOpen && p.asset === asset).length;
-    if (openCount >= 2) return; // allow up to 2 concurrent positions on the same asset
+    // Allow up to 2 concurrent positions per asset
+    const openCount = useStore.getState().openPositions.filter(
+      (p) => p.isOpen && p.asset === asset
+    ).length;
+    if (openCount >= 2) return;
 
     scanningRef.current = true;
     setStatus((s) => ({ ...s, state: "scanning", lastScanTime: new Date().toLocaleTimeString() }));
@@ -179,11 +183,9 @@ export function useAutoTrader(asset: Asset) {
         return;
       }
 
-      const now = new Date().toLocaleTimeString();
-
       if (!data.shouldTrade) {
         const reason = data.reason ?? "No signal";
-        addLog(`${now} — No trade. ${reason}. RSI: ${data.rsi?.toFixed(0) ?? "—"}, Vol: ${data.volumeLabel ?? "—"}`, "info");
+        addLog(`No trade: ${reason}`, "info");
         setStatus((s) => ({ ...s, state: "idle", lastSignal: reason }));
         return;
       }
@@ -192,26 +194,23 @@ export function useAutoTrader(asset: Asset) {
         trailTriggerPct = 20, trailRetreatPct = 35 } = data;
 
       addLog(
-        `Signal: ${direction.toUpperCase()} ${asset} @ $${entry.toFixed(2)} | conf ${confidence}% | TP ${tpPct}% margin | ${reasoning}`,
+        `Signal: ${direction.toUpperCase()} ${asset} @ $${entry.toFixed(2)} | conf ${confidence}% | TP ${tpPct}% margin`,
         "trade"
       );
 
-      // Position size: 5% of paper balance per trade
       const currentBalance = useStore.getState().paperBalance;
       const positionUsd = currentBalance * 0.05;
       const size = positionUsd / entry;
-
       const posId = `auto_${Date.now()}`;
 
-      // Live mode: sign and submit real order to Hyperliquid
+      // Live mode: sign and submit real order
       if (tradingMode === "live") {
         try {
           addLog(`Setting ${autoTradeLeverage}x leverage on Hyperliquid...`, "info");
           await hl.setLeverage(asset, autoTradeLeverage);
-
           addLog(`Submitting ${direction.toUpperCase()} market order to Hyperliquid...`, "info");
-          await hl.placeMarketOrder({ asset, direction, sizeUsd: currentBalance * 0.05, currentPrice: entry });
-          addLog(`Live order submitted — monitoring position via Hyperliquid API`, "trade");
+          await hl.placeMarketOrder({ asset, direction, sizeUsd: positionUsd, currentPrice: entry });
+          addLog(`Live order submitted`, "trade");
         } catch (orderErr: any) {
           addLog(`Live order failed: ${orderErr.message}`, "error");
           setStatus((s) => ({ ...s, state: "error", lastSignal: orderErr.message }));
@@ -220,30 +219,17 @@ export function useAutoTrader(asset: Asset) {
       }
 
       openPosition({
-        id: posId,
-        asset,
-        direction,
-        entryPrice: entry,
-        currentPrice: entry,
-        size,
-        leverage: autoTradeLeverage,
-        stopLoss: sl,
-        takeProfit: tp,
-        isOpen: true,
-        openedAt: new Date().toISOString(),
+        id: posId, asset, direction,
+        entryPrice: entry, currentPrice: entry,
+        size, leverage: autoTradeLeverage,
+        stopLoss: sl, takeProfit: tp,
+        isOpen: true, openedAt: new Date().toISOString(),
       });
 
-      // Register trailing stop metadata
-      trailMeta[posId] = {
-        peakPrice: entry,
-        trailTriggerPct,
-        trailRetreatPct,
-        leverage: autoTradeLeverage,
-        direction,
-      };
+      trailMeta[posId] = { peakPrice: entry, trailTriggerPct, trailRetreatPct, leverage: autoTradeLeverage, direction };
 
       addLog(
-        `Opened ${direction.toUpperCase()} ${asset} @ $${entry.toFixed(2)} | SL $${sl.toFixed(2)} | TP $${tp.toFixed(2)} (${tpPct}%) | Trail activates at +${trailTriggerPct}%`,
+        `Opened ${direction.toUpperCase()} ${asset} @ $${entry.toFixed(2)} | SL $${sl.toFixed(2)} | TP $${tp.toFixed(2)} | Trail +${trailTriggerPct}%`,
         "trade"
       );
       setStatus((s) => ({ ...s, state: "in_position", lastSignal: reasoning }));
@@ -255,24 +241,16 @@ export function useAutoTrader(asset: Asset) {
     }
   }, [asset, autoTradeLeverage, emergencyStop, tradingMode, openPosition, addLog, hl.setLeverage, hl.placeMarketOrder]);
 
-  // ── Start/stop based on autoTradeEnabled ──
+  // ── Scan timer: only runs when bot is enabled ────────────────────────────
   useEffect(() => {
-    if (autoTradeEnabled && !emergencyStop) {
-      runScan(); // immediate first scan
-      scanTimerRef.current = setInterval(runScan, SCAN_INTERVAL_MS);
-      priceTimerRef.current = setInterval(monitorPrices, PRICE_POLL_MS);
-    } else {
-      if (scanTimerRef.current) { clearInterval(scanTimerRef.current); scanTimerRef.current = null; }
-      if (priceTimerRef.current) { clearInterval(priceTimerRef.current); priceTimerRef.current = null; }
-      if (!autoTradeEnabled) {
-        setStatus((s) => ({ ...s, state: "idle" }));
-      }
+    if (!autoTradeEnabled || emergencyStop) {
+      if (!autoTradeEnabled) setStatus((s) => ({ ...s, state: "idle" }));
+      return;
     }
-    return () => {
-      if (scanTimerRef.current) clearInterval(scanTimerRef.current);
-      if (priceTimerRef.current) clearInterval(priceTimerRef.current);
-    };
-  }, [autoTradeEnabled, emergencyStop, runScan, monitorPrices]);
+    runScan(); // immediate first scan
+    const timer = setInterval(runScan, SCAN_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [autoTradeEnabled, emergencyStop, runScan]);
 
   return status;
 }
