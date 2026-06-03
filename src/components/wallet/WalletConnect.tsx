@@ -49,7 +49,7 @@ export function WalletConnect() {
                 onClick={openChainModal}
                 className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold px-6 py-3 rounded-xl transition-all"
               >
-                ⚠️ Wrong Network — Switch to Base
+                ⚠️ Wrong Network — Switch to Arbitrum
               </button>
             );
           }

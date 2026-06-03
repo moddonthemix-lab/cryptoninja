@@ -1,12 +1,13 @@
 import { getDefaultConfig } from "@rainbow-me/rainbowkit";
-import { base, baseSepolia } from "wagmi/chains";
+import { arbitrum, base, baseSepolia } from "wagmi/chains";
 
 export const wagmiConfig = getDefaultConfig({
   appName: "CryptoNinja",
   projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || "demo",
-  chains: [base, baseSepolia],
+  chains: [arbitrum, base, baseSepolia],
   ssr: true,
 });
 
-export const SUPPORTED_CHAINS = [base, baseSepolia];
-export const DEFAULT_CHAIN = base;
+// Arbitrum is primary — Hyperliquid EIP-712 uses chainId 42161
+export const SUPPORTED_CHAINS = [arbitrum, base, baseSepolia];
+export const DEFAULT_CHAIN = arbitrum;

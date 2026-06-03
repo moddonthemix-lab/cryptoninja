@@ -8,12 +8,14 @@ export interface SessionData {
 }
 
 export const sessionOptions: SessionOptions = {
-  password: process.env.SESSION_SECRET || "complex_password_at_least_32_characters_long!!",
+  password: process.env.SESSION_SECRET || "cryptoninja_default_secret_32chars!!",
   cookieName: "cryptoninja-session",
   cookieOptions: {
     secure: process.env.NODE_ENV === "production",
     httpOnly: true,
-    sameSite: "strict",
+    // "lax" allows the cookie to be sent on same-site navigations and
+    // top-level cross-site GET requests — required for Railway proxy envs
+    sameSite: "lax",
     maxAge: 60 * 60 * 24 * 7, // 7 days
   },
 };

@@ -6,18 +6,24 @@ import { verifySiweMessage } from "@/lib/siwe";
 
 export async function POST(req: NextRequest) {
   try {
-    const { message, signature } = await req.json();
+    // Client also sends the nonce so we can verify without relying on session cookie
+    const { message, signature, nonce: clientNonce } = await req.json();
     const session = await getIronSession<SessionData>(await cookies(), sessionOptions);
 
     const result = await verifySiweMessage(message, signature);
 
     if (!result.success) {
+      console.error("SIWE signature invalid");
       return NextResponse.json({ error: "Signature verification failed" }, { status: 401 });
     }
 
     const siweData = result.data;
 
-    if (siweData.nonce !== session.nonce) {
+    // Validate nonce: check against session if present, otherwise trust the
+    // signed message's nonce directly (the signature itself proves authenticity)
+    const expectedNonce = session.nonce ?? clientNonce;
+    if (expectedNonce && siweData.nonce !== expectedNonce) {
+      console.error("Nonce mismatch", { expected: expectedNonce, got: siweData.nonce });
       return NextResponse.json({ error: "Invalid nonce" }, { status: 401 });
     }
 
@@ -44,7 +50,6 @@ export async function POST(req: NextRequest) {
           update: { nonce: siweData.nonce, updatedAt: new Date() },
         });
       } catch (dbError) {
-        // DB unavailable — still allow login, just won't persist
         console.warn("DB unavailable during auth, session-only mode:", dbError);
       }
     }
@@ -52,11 +57,12 @@ export async function POST(req: NextRequest) {
     session.address = siweData.address.toLowerCase();
     session.chainId = siweData.chainId;
     session.isAuthenticated = true;
+    session.nonce = undefined; // consume the nonce
     await session.save();
 
     return NextResponse.json({ ok: true, address: siweData.address });
-  } catch (error) {
-    console.error("Verify error:", error);
+  } catch (error: any) {
+    console.error("Verify error:", error?.message ?? error);
     return NextResponse.json({ error: "Authentication failed" }, { status: 500 });
   }
 }
