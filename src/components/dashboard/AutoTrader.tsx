@@ -38,6 +38,7 @@ export function AutoTrader() {
 
   const status = useAutoTrader(selectedAsset);
   const activePos = openPositions.find((p) => p.isOpen && p.asset === selectedAsset);
+  const isLive = tradingMode === "live";
 
   return (
     <div className={cn(
@@ -49,7 +50,9 @@ export function AutoTrader() {
         <div className="flex items-center gap-2">
           <Zap size={15} className={cn(autoTradeEnabled ? "text-ninja-accent" : "text-ninja-muted")} />
           <span className="font-bold text-sm text-ninja-text">Auto Trader</span>
-          {tradingMode === "paper" && (
+          {isLive ? (
+            <span className="text-xs px-1.5 py-0.5 rounded bg-green-500/20 text-green-400 font-bold">LIVE</span>
+          ) : (
             <span className="text-xs px-1.5 py-0.5 rounded bg-ninja-border text-ninja-muted">PAPER</span>
           )}
         </div>
@@ -167,16 +170,26 @@ export function AutoTrader() {
         </div>
       )}
 
-      {/* Balance */}
-      <div className="flex justify-between text-xs">
-        <span className="text-ninja-muted">Paper Balance</span>
-        <span className="font-mono font-bold text-ninja-green">${paperBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-      </div>
+      {/* Balance (paper) or live note */}
+      {!isLive && (
+        <div className="flex justify-between text-xs">
+          <span className="text-ninja-muted">Paper Balance</span>
+          <span className="font-mono font-bold text-ninja-green">${paperBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+        </div>
+      )}
 
-      {/* How it works blurb (only when off) */}
-      {!autoTradeEnabled && (
+      {isLive && !autoTradeEnabled && (
+        <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/5 p-2.5 text-xs text-yellow-300 leading-relaxed">
+          <strong>Live mode:</strong> Bot will sign real orders via your wallet.
+          Each trade uses 5% of your Hyperliquid equity.
+          SL at −30% margin, TP dynamic (25–100%).
+        </div>
+      )}
+
+      {/* How it works blurb (only when off, paper mode) */}
+      {!autoTradeEnabled && !isLive && (
         <p className="text-ninja-muted/70 text-xs leading-relaxed">
-          AI scans {selectedAsset} every 5 min using TheStrat patterns + RSI + volume.
+          AI scans {selectedAsset} every 5 min using TheStrat FTFC.
           Hard SL at −30% margin. TP is dynamic (25–100%) based on momentum.
           Trailing stop locks profit once you're ahead.
         </p>

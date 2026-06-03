@@ -6,6 +6,7 @@ import { AutoTrader } from "./AutoTrader";
 import { AIBrain } from "./AIBrain";
 import { TradingPanel } from "@/components/trading/TradingPanel";
 import { StrategyRunner } from "@/components/strategy/StrategyRunner";
+import { HyperliquidAccount } from "@/components/wallet/HyperliquidAccount";
 
 type Tab = "BOT" | "AI" | "TRADE" | "STRAT";
 
@@ -40,8 +41,13 @@ export function RightPanel() {
       </div>
 
       {/* Panel content */}
-      <div className="p-2 overflow-y-auto">
-        {activeTab === "BOT" && <AutoTrader />}
+      <div className="p-2 overflow-y-auto space-y-3">
+        {activeTab === "BOT" && (
+          <>
+            <HyperliquidAccount />
+            <AutoTrader />
+          </>
+        )}
         {activeTab === "AI" && <AIBrain />}
         {activeTab === "TRADE" && <TradingPanel />}
         {activeTab === "STRAT" && <StrategyRunner />}

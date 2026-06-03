@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useCallback, useState } from "react";
 import { useStore } from "@/store/useStore";
+import { useHyperliquid } from "@/hooks/useHyperliquid";
 import type { Asset } from "@/types";
 
 const SCAN_INTERVAL_MS = 5 * 60 * 1000; // scan every 5 minutes
@@ -30,8 +31,10 @@ export function useAutoTrader(asset: Asset) {
   const {
     autoTradeEnabled, autoTradeLeverage, emergencyStop,
     openPosition, closePosition, openPositions, marketData,
-    paperBalance,
+    paperBalance, tradingMode,
   } = useStore();
+
+  const hl = useHyperliquid();
 
   const [status, setStatus] = useState<AutoTraderStatus>({
     state: "idle",
@@ -46,6 +49,12 @@ export function useAutoTrader(asset: Asset) {
   const scanTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const priceTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const scanningRef = useRef(false);
+
+  // Reset scan state when asset changes so we don't get stuck in error/scanning
+  useEffect(() => {
+    scanningRef.current = false;
+    setStatus((s) => ({ ...s, state: "idle", lastSignal: null, currentPnlPct: null, peakPnlPct: null, trailActive: false }));
+  }, [asset]);
 
   const addLog = useCallback((msg: string, type: AutoTraderStatus["log"][0]["type"] = "info") => {
     const entry = { time: new Date().toLocaleTimeString(), msg, type };
@@ -193,6 +202,23 @@ export function useAutoTrader(asset: Asset) {
       const size = positionUsd / entry;
 
       const posId = `auto_${Date.now()}`;
+
+      // Live mode: sign and submit real order to Hyperliquid
+      if (tradingMode === "live") {
+        try {
+          addLog(`Setting ${autoTradeLeverage}x leverage on Hyperliquid...`, "info");
+          await hl.setLeverage(asset, autoTradeLeverage);
+
+          addLog(`Submitting ${direction.toUpperCase()} market order to Hyperliquid...`, "info");
+          await hl.placeMarketOrder({ asset, direction, sizeUsd: currentBalance * 0.05, currentPrice: entry });
+          addLog(`Live order submitted — monitoring position via Hyperliquid API`, "trade");
+        } catch (orderErr: any) {
+          addLog(`Live order failed: ${orderErr.message}`, "error");
+          setStatus((s) => ({ ...s, state: "error", lastSignal: orderErr.message }));
+          return;
+        }
+      }
+
       openPosition({
         id: posId,
         asset,
@@ -227,7 +253,7 @@ export function useAutoTrader(asset: Asset) {
     } finally {
       scanningRef.current = false;
     }
-  }, [asset, autoTradeLeverage, emergencyStop, openPosition, addLog]);
+  }, [asset, autoTradeLeverage, emergencyStop, tradingMode, openPosition, addLog, hl.setLeverage, hl.placeMarketOrder]);
 
   // ── Start/stop based on autoTradeEnabled ──
   useEffect(() => {
