@@ -7,10 +7,12 @@ import { useStore } from "@/store/useStore";
 import { useHyperliquid } from "@/hooks/useHyperliquid";
 import { erc20Abi, formatUnits } from "viem";
 import { cn } from "@/lib/utils";
-import { CheckCircle, XCircle, ExternalLink, Loader2, ChevronRight, Wallet, Shield, ArrowDownToLine, Zap } from "lucide-react";
-import { useState } from "react";
+import {
+  CheckCircle, XCircle, ExternalLink, Loader2, ChevronRight,
+  Wallet, Shield, Zap, Key,
+} from "lucide-react";
+import { useState, useEffect } from "react";
 
-// USDC native on Arbitrum One
 const USDC_ARBITRUM = "0xaf88d065e77c8cC2239327C5EDb3A432268e5831" as `0x${string}`;
 
 export function LiveTradingSetup() {
@@ -19,12 +21,27 @@ export function LiveTradingSetup() {
   const { tradingMode, setTradingMode } = useStore();
   const { account } = useHyperliquid();
   const { switchChain, isPending: isSwitching } = useSwitchChain();
+
   const [isSigning, setIsSigning] = useState(false);
   const [signError, setSignError] = useState<string | null>(null);
+  const [agentConfigured, setAgentConfigured] = useState<boolean | null>(null);
+  const [agentAddress, setAgentAddress] = useState<string | null>(null);
 
   const isOnArbitrum = chainId === arbitrum.id;
   const hlEquity = account ? parseFloat(account.accountValue) : null;
   const hlFunded = hlEquity !== null && hlEquity >= 1;
+  const isLive = tradingMode === "live";
+
+  // Check if agent key is set server-side
+  useEffect(() => {
+    fetch("/api/hl/agent-status")
+      .then((r) => r.json())
+      .then((d) => {
+        setAgentConfigured(d.configured);
+        setAgentAddress(d.agentAddress);
+      })
+      .catch(() => setAgentConfigured(false));
+  }, []);
 
   // USDC balance on Arbitrum
   const { data: usdcRaw } = useReadContract({
@@ -37,22 +54,23 @@ export function LiveTradingSetup() {
   });
   const usdcBalance = usdcRaw !== undefined ? parseFloat(formatUnits(usdcRaw, 6)) : null;
 
-  const isLive = tradingMode === "live";
-
-  // Steps
   const steps = [
     {
       id: "connect",
       label: "Connect wallet",
       done: isConnected,
-      detail: isConnected ? `${address?.slice(0, 6)}...${address?.slice(-4)}` : "Use RainbowKit to connect MetaMask, Coinbase, etc.",
+      detail: isConnected
+        ? `${address?.slice(0, 6)}...${address?.slice(-4)}`
+        : "Connect MetaMask, Coinbase Wallet, etc.",
       action: null,
     },
     {
       id: "siwe",
       label: "Sign in with Ethereum",
       done: isAuthenticated,
-      detail: isAuthenticated ? "Session active" : "One-click signature — no gas, no transaction",
+      detail: isAuthenticated
+        ? "Session active"
+        : "One-click signature — no gas, no transaction",
       action: !isAuthenticated && isConnected ? (
         <button
           onClick={async () => {
@@ -70,19 +88,24 @@ export function LiveTradingSetup() {
       ) : null,
     },
     {
-      id: "network",
-      label: "Switch to Arbitrum",
-      done: isOnArbitrum,
-      detail: isOnArbitrum ? "Arbitrum One (chain 42161)" : "Deposits require Arbitrum; HL orders work on any chain",
-      action: !isOnArbitrum && isConnected ? (
-        <button
-          onClick={() => switchChain({ chainId: arbitrum.id })}
-          disabled={isSwitching}
-          className="flex items-center gap-1.5 text-xs bg-ninja-accent/20 hover:bg-ninja-accent/30 text-ninja-accent px-2.5 py-1 rounded-lg transition-colors disabled:opacity-50"
+      id: "agent",
+      label: "API wallet key set",
+      done: agentConfigured === true,
+      detail: agentConfigured === true
+        ? `Agent ${agentAddress?.slice(0, 10)}... active — orders signed server-side`
+        : agentConfigured === false
+          ? "Add HL_AGENT_PRIVATE_KEY to Railway env vars"
+          : "Checking...",
+      action: agentConfigured === false ? (
+        <a
+          href="https://app.hyperliquid.xyz/trade"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-1.5 text-xs bg-ninja-accent/20 hover:bg-ninja-accent/30 text-ninja-accent px-2.5 py-1 rounded-lg transition-colors"
         >
-          {isSwitching ? <Loader2 size={11} className="animate-spin" /> : <ChevronRight size={11} />}
-          Switch
-        </button>
+          <ExternalLink size={11} />
+          HL App
+        </a>
       ) : null,
     },
     {
@@ -92,8 +115,8 @@ export function LiveTradingSetup() {
       detail: hlFunded
         ? `$${hlEquity?.toFixed(2)} equity on Hyperliquid`
         : usdcBalance !== null
-          ? `You have $${usdcBalance.toFixed(2)} USDC on Arbitrum ready to deposit`
-          : "Deposit USDC from Arbitrum to start trading",
+          ? `$${usdcBalance.toFixed(2)} USDC on Arbitrum ready to deposit`
+          : "Deposit USDC from Arbitrum",
       action: !hlFunded ? (
         <a
           href="https://app.hyperliquid.xyz/trade"
@@ -102,15 +125,17 @@ export function LiveTradingSetup() {
           className="flex items-center gap-1.5 text-xs bg-ninja-accent/20 hover:bg-ninja-accent/30 text-ninja-accent px-2.5 py-1 rounded-lg transition-colors"
         >
           <ExternalLink size={11} />
-          Deposit on HL
+          Deposit
         </a>
       ) : null,
     },
     {
       id: "live",
-      label: "Enable Live trading mode",
+      label: "Enable Live mode",
       done: isLive,
-      detail: isLive ? "Live mode active — real orders will be signed and submitted" : "Toggle LIVE in the top bar or below",
+      detail: isLive
+        ? "Live mode active — real orders sign automatically"
+        : "Toggle LIVE in the top bar or click below",
       action: !isLive ? (
         <button
           onClick={() => setTradingMode("live")}
@@ -128,10 +153,9 @@ export function LiveTradingSetup() {
 
   return (
     <div className="bg-ninja-card border border-ninja-border rounded-xl p-4 space-y-4">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Wallet size={14} className="text-ninja-accent" />
+          <Key size={14} className="text-ninja-accent" />
           <span className="text-sm font-bold text-ninja-text">Live Trading Setup</span>
         </div>
         <span className={cn(
@@ -156,15 +180,15 @@ export function LiveTradingSetup() {
           <div
             key={step.id}
             className={cn(
-              "flex items-start gap-3 p-2.5 rounded-lg transition-colors",
-              step.done ? "bg-green-500/5 border border-green-500/20" : "bg-ninja-bg/50 border border-ninja-border/50"
+              "flex items-start gap-3 p-2.5 rounded-lg border transition-colors",
+              step.done
+                ? "bg-green-500/5 border-green-500/20"
+                : "bg-ninja-bg/50 border-ninja-border/50"
             )}
           >
-            {step.done ? (
-              <CheckCircle size={15} className="text-green-400 flex-shrink-0 mt-0.5" />
-            ) : (
-              <XCircle size={15} className="text-ninja-muted/50 flex-shrink-0 mt-0.5" />
-            )}
+            {step.done
+              ? <CheckCircle size={15} className="text-green-400 flex-shrink-0 mt-0.5" />
+              : <XCircle size={15} className="text-ninja-muted/50 flex-shrink-0 mt-0.5" />}
             <div className="flex-1 min-w-0">
               <div className={cn("text-xs font-bold", step.done ? "text-green-400" : "text-ninja-text")}>
                 {step.label}
@@ -179,21 +203,39 @@ export function LiveTradingSetup() {
         ))}
       </div>
 
-      {/* All done */}
-      {allDone && (
-        <div className="rounded-lg border border-green-500/30 bg-green-500/5 p-3 text-xs text-green-300 leading-relaxed">
-          <div className="font-bold mb-1">Ready to trade live on Hyperliquid!</div>
-          Enable the Auto Trader in BOT tab or place orders manually in the TRADE tab.
-          Each order triggers a wallet signature — no private keys stored.
+      {/* Agent key setup instructions (shown when not configured) */}
+      {agentConfigured === false && (
+        <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/5 p-3 space-y-2">
+          <div className="text-xs font-bold text-yellow-400 flex items-center gap-1.5">
+            <Key size={11} />
+            How to add your API wallet key
+          </div>
+          <ol className="text-xs text-ninja-muted/80 space-y-1.5 list-decimal list-inside leading-relaxed">
+            <li>On Hyperliquid, go to <strong className="text-ninja-text">Account → API Wallets</strong></li>
+            <li>Find <strong className="text-ninja-text">CRYPTONINJA1</strong> and export its private key</li>
+            <li>In Railway dashboard, add environment variable:<br />
+              <code className="text-ninja-accent bg-ninja-bg/80 px-1.5 py-0.5 rounded text-xs block mt-1">
+                HL_AGENT_PRIVATE_KEY = 0x...your_private_key...
+              </code>
+            </li>
+            <li>Redeploy — orders will sign automatically, no wallet popups</li>
+          </ol>
         </div>
       )}
 
-      {/* How orders are signed */}
-      <div className="text-ninja-muted/60 text-xs space-y-0.5 pt-1 border-t border-ninja-border/40">
-        <div className="font-medium text-ninja-muted">How it works:</div>
-        <div>• Orders are signed client-side via EIP-712 (your wallet)</div>
-        <div>• Signed actions go to Hyperliquid's exchange API directly</div>
-        <div>• No private keys are stored — only you can approve trades</div>
+      {allDone && (
+        <div className="rounded-lg border border-green-500/30 bg-green-500/5 p-3 text-xs text-green-300 leading-relaxed">
+          <div className="font-bold mb-1">Ready to trade live on Hyperliquid!</div>
+          Enable Auto Trader in BOT tab or place orders in TRADE tab.
+          Your API wallet signs all orders automatically — no popups.
+        </div>
+      )}
+
+      <div className="text-ninja-muted/60 text-xs pt-1 border-t border-ninja-border/40 space-y-0.5">
+        <div className="font-medium text-ninja-muted">Security</div>
+        <div>• API wallet can only trade, not withdraw funds</div>
+        <div>• Your main wallet retains full custody</div>
+        <div>• Disable the API wallet on HL anytime to revoke access</div>
       </div>
     </div>
   );
