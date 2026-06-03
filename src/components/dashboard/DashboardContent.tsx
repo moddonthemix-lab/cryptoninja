@@ -5,12 +5,8 @@ import { useStore } from "@/store/useStore";
 import { TradingViewWidget } from "@/components/chart/TradingViewWidget";
 import { StatsGrid } from "./StatsGrid";
 import { PositionsTable } from "./PositionsTable";
-import { AIBrain } from "./AIBrain";
 import { MarketTicker } from "./MarketTicker";
-import { TradingPanel } from "@/components/trading/TradingPanel";
-import { HLPositions } from "@/components/trading/HLPositions";
-import { StrategyRunner } from "@/components/strategy/StrategyRunner";
-import { AutoTrader } from "./AutoTrader";
+import { RightPanel } from "./RightPanel";
 import type { Asset } from "@/types";
 import { ASSETS } from "@/types";
 import { cn } from "@/lib/utils";
@@ -27,57 +23,60 @@ const TIMEFRAMES = [
 ];
 
 export function DashboardContent() {
-  const { selectedAsset, setSelectedAsset, marketData, openPositions, aiSignals, tradingMode } = useStore();
+  const { selectedAsset, setSelectedAsset, marketData, openPositions, aiSignals } = useStore();
   const [timeframe, setTimeframe] = useState("1h");
 
   const aiSignal = aiSignals[selectedAsset];
   const activePos = openPositions.find((p) => p.asset === selectedAsset && p.isOpen);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <MarketTicker />
 
-      {/* Asset tabs */}
-      <div className="flex items-center gap-2 flex-wrap">
-        {ALL_ASSETS.map((asset) => {
-          const data = marketData[asset];
-          const up = (data?.changePercent24h ?? 0) >= 0;
-          const isSelected = selectedAsset === asset;
-          return (
-            <button
-              key={asset}
-              onClick={() => setSelectedAsset(asset)}
-              className={cn(
-                "flex items-center gap-2 px-4 py-2 rounded-xl border transition-all",
-                isSelected
-                  ? "border-ninja-accent bg-ninja-accent/10"
-                  : "border-ninja-border bg-ninja-card hover:border-ninja-accent/40"
-              )}
-            >
-              <span className="font-bold text-sm" style={{ color: ASSETS[asset].color }}>
-                {asset}
-              </span>
-              {data && (
-                <>
-                  <span className="text-ninja-text text-xs font-mono">
-                    ${data.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
-                  <span className={cn("text-xs font-mono", up ? "text-ninja-green" : "text-ninja-red")}>
-                    {up ? "+" : ""}{data.changePercent24h.toFixed(2)}%
-                  </span>
-                </>
-              )}
-            </button>
-          );
-        })}
+      {/* Asset tabs + inline stats bar */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {ALL_ASSETS.map((asset) => {
+            const data = marketData[asset];
+            const up = (data?.changePercent24h ?? 0) >= 0;
+            const isSelected = selectedAsset === asset;
+            return (
+              <button
+                key={asset}
+                onClick={() => setSelectedAsset(asset)}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all",
+                  isSelected
+                    ? "border-ninja-accent bg-ninja-accent/10"
+                    : "border-ninja-border bg-ninja-card hover:border-ninja-accent/40"
+                )}
+              >
+                <span className="font-bold text-xs" style={{ color: ASSETS[asset].color }}>
+                  {asset}
+                </span>
+                {data && (
+                  <>
+                    <span className="text-ninja-text text-xs font-mono">
+                      ${data.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                    <span className={cn("text-xs font-mono", up ? "text-ninja-green" : "text-ninja-red")}>
+                      {up ? "+" : ""}{data.changePercent24h.toFixed(2)}%
+                    </span>
+                  </>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        <StatsGrid />
       </div>
 
-      <StatsGrid />
+      {/* Main grid: chart 3 cols, right panel 1 col */}
+      <div className="grid grid-cols-1 xl:grid-cols-4 gap-3" style={{ minHeight: 0 }}>
 
-      {/* Main trading area: chart + AI on top, trading panel on right */}
-      <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
         {/* Chart column */}
-        <div className="xl:col-span-3 space-y-2">
+        <div className="xl:col-span-3 flex flex-col gap-2">
           {/* Timeframe selector */}
           <div className="flex gap-1">
             {TIMEFRAMES.map((tf) => (
@@ -96,59 +95,61 @@ export function DashboardContent() {
             ))}
           </div>
 
-          {/* TradingView chart — real live data */}
+          {/* TradingView chart */}
           <TradingViewWidget
             asset={selectedAsset}
             timeframe={timeframe}
-            height={460}
+            height={520}
             entryPrice={activePos?.entryPrice ?? aiSignal?.suggestedEntry}
             stopLoss={activePos?.stopLoss ?? aiSignal?.suggestedSL}
             takeProfit={activePos?.takeProfit ?? aiSignal?.suggestedTP}
           />
 
-          {/* AI signal bar */}
+          {/* AI signal bar — compact one-liner */}
           {aiSignal && (
             <div className={cn(
-              "rounded-xl border px-4 py-3 flex items-center gap-4 flex-wrap text-xs",
+              "rounded-lg border px-3 py-2 flex items-center gap-3 flex-wrap text-xs",
               aiSignal.direction === "long"
                 ? "border-green-500/30 bg-green-500/5"
                 : "border-red-500/30 bg-red-500/5"
             )}>
               <span className={cn(
-                "font-bold px-2 py-0.5 rounded text-sm",
+                "font-bold px-2 py-0.5 rounded",
                 aiSignal.direction === "long"
                   ? "bg-green-500/20 text-green-400"
                   : "bg-red-500/20 text-red-400"
               )}>
                 AI: {aiSignal.direction.toUpperCase()}
               </span>
-              <span className="text-ninja-muted">{aiSignal.confidence}% confidence</span>
+              <span className="text-ninja-muted">{aiSignal.confidence}% conf</span>
               {aiSignal.suggestedEntry && (
-                <span><span className="text-ninja-accent">Entry</span> ${aiSignal.suggestedEntry.toFixed(2)}</span>
+                <span className="font-mono">
+                  <span className="text-ninja-accent">Entry</span> ${aiSignal.suggestedEntry.toFixed(2)}
+                </span>
               )}
               {aiSignal.suggestedSL && (
-                <span><span className="text-ninja-red">SL</span> ${aiSignal.suggestedSL.toFixed(2)}</span>
+                <span className="font-mono">
+                  <span className="text-ninja-red">SL</span> ${aiSignal.suggestedSL.toFixed(2)}
+                </span>
               )}
               {aiSignal.suggestedTP && (
-                <span><span className="text-ninja-green">TP</span> ${aiSignal.suggestedTP.toFixed(2)}</span>
+                <span className="font-mono">
+                  <span className="text-ninja-green">TP</span> ${aiSignal.suggestedTP.toFixed(2)}
+                </span>
               )}
-              <span className="text-ninja-muted ml-auto hidden lg:block">{aiSignal.reasoning}</span>
+              <span className="text-ninja-muted ml-auto hidden lg:block truncate max-w-xs">{aiSignal.reasoning}</span>
             </div>
           )}
+
+          {/* Positions table — directly below chart */}
+          <PositionsTable />
         </div>
 
-        {/* Right sidebar: Auto Trader + AI Brain + Trading Panel + TheStrat Runner */}
-        <div className="xl:col-span-1 space-y-4">
-          <AutoTrader />
-          <AIBrain />
-          <TradingPanel />
-          <StrategyRunner />
+        {/* Right panel — tabbed */}
+        <div className="xl:col-span-1">
+          <RightPanel />
         </div>
       </div>
-
-      {/* Positions: paper table always, HL live positions when in live mode */}
-      {tradingMode === "live" && <HLPositions />}
-      <PositionsTable />
     </div>
   );
 }
