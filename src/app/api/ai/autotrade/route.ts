@@ -8,6 +8,7 @@ const INTERVAL_MS: Record<string, number> = {
   "5m": 300_000,
   "1h": 3_600_000,
   "4h": 14_400_000,
+  "6h": 21_600_000,
   "1d": 86_400_000,
 };
 
@@ -73,44 +74,43 @@ function calcFTFC(weeklyDir: TFDirection, dailyDir: TFDirection): FTFCResult {
   return "mixed";
 }
 
+// Check if 5m price has broken and held above/below a given level
 function checkBreakAndHold(candles5m: Candle[], level: number, direction: "bullish" | "bearish"): boolean {
   if (candles5m.length < 2) return false;
   const mostRecentClose = candles5m[candles5m.length - 1].close;
-  if (direction === "bullish") {
-    return candles5m.some((c) => c.close > level) && mostRecentClose > level;
-  }
+  if (direction === "bullish") return candles5m.some((c) => c.close > level) && mostRecentClose > level;
   return candles5m.some((c) => c.close < level) && mostRecentClose < level;
+}
+
+// Prior candle high/low (second-to-last closed candle)
+function priorHL(candles: Candle[]): { high: number; low: number } {
+  const c = candles[candles.length - 2];
+  return c ? { high: c.high, low: c.low } : { high: 0, low: 0 };
 }
 
 // ─── Goldbach / PO3 helpers ───────────────────────────────────────────────────
 
-// Powers of 3 sequence used for dealing range sizes
 const PO3_SEQUENCE = [3, 9, 27, 81, 243, 729, 2187, 6561, 19683];
 
-// Find the nearest PO3 value to a given number (e.g. ADR)
 function nearestPO3(value: number): number {
   return PO3_SEQUENCE.reduce((prev, curr) =>
     Math.abs(curr - value) < Math.abs(prev - value) ? curr : prev
   );
 }
 
-// Calculate the average daily range over the last N candles
-function calcADR(dailyCandles: Candle[], n = 20): number {
-  const recent = dailyCandles.slice(-n);
+function calcAverageRange(candles: Candle[], n = 20): number {
+  const recent = candles.slice(-n);
   if (recent.length === 0) return 0;
   return recent.reduce((sum, c) => sum + (c.high - c.low), 0) / recent.length;
 }
 
-// Derive the current PO3 dealing range partition that price sits in
 function calcDealingRange(currentPrice: number, po3Size: number): { low: number; high: number } {
-  const partitionIndex = Math.floor(currentPrice / po3Size);
-  return { low: partitionIndex * po3Size, high: (partitionIndex + 1) * po3Size };
+  const idx = Math.floor(currentPrice / po3Size);
+  return { low: idx * po3Size, high: (idx + 1) * po3Size };
 }
 
-// The 14 Goldbach levels as % of the dealing range, from the book:
-// prime pairs that sum to 100, spaced 6% apart (except top/bottom at 3%)
-// 0/100=boundary, 3/97=rejection block, 11/89=order block, 17/83=FVG,
-// 29/71=liquidity void, 41/59=breaker, 47/53=equilibrium
+// Goldbach levels: 14 price points at fixed % of dealing range
+// prime pairs summing to 100, spaced 6% apart
 const GB_PERCENTAGES = [0, 3, 11, 17, 29, 41, 47, 53, 59, 71, 83, 89, 97, 100] as const;
 const GB_NAMES = [
   "rangeLow", "rejBlockLow", "orderBlockLow", "fvgLow",
@@ -128,74 +128,67 @@ function calcGoldbachLevels(rangeLow: number, rangeHigh: number): GoldbachLevels
   ) as GoldbachLevels;
 }
 
-// Find which Goldbach level is nearest to current price, and the % distance
-function nearestGoldbachLevel(price: number, levels: GoldbachLevels): {
-  name: string; level: number; distPct: number;
-} {
+function nearestGoldbachLevel(price: number, levels: GoldbachLevels): { name: string; level: number; distPct: number } {
   let nearest = { name: "", level: 0, distPct: Infinity };
   for (const [name, level] of Object.entries(levels)) {
-    const distPct = Math.abs((price - level) / level) * 100;
-    if (distPct < nearest.distPct) nearest = { name, level, distPct };
+    const distPct = Math.abs((price - (level as number)) / (level as number)) * 100;
+    if (distPct < nearest.distPct) nearest = { name, level: level as number, distPct };
   }
   return nearest;
 }
 
-// The Goldbach trade plan defines which level to target given an entry level.
-// Based on Goldbach algorithms from the book (ALGO 1 and ALGO 2).
+// Goldbach positional bias: where is price in the dealing range?
+// Discount (<47%) = bullish GB bias, Premium (>53%) = bearish GB bias, Equil = neutral
+function goldbachBias(price: number, rangeLow: number, rangeHigh: number): "bullish" | "bearish" | "neutral" {
+  const pct = ((price - rangeLow) / (rangeHigh - rangeLow)) * 100;
+  if (pct < 47) return "bullish";   // discount zone — expect move to premium
+  if (pct > 53) return "bearish";   // premium zone — expect move to discount
+  return "neutral";                  // equilibrium zone
+}
+
+// TP target per Goldbach trade plan (ALGO 1 / ALGO 2 from the book)
 function goldbachTpLevel(entryLevelName: string, direction: "bullish" | "bearish", levels: GoldbachLevels): number | null {
-  // For longs (bullish): entry at a discount level, target the paired premium level
-  // For shorts (bearish): entry at a premium level, target the paired discount level
   const longMap: Record<string, keyof GoldbachLevels> = {
-    orderBlockLow: "breakerHigh",   // OB plan: enter OB (11%), target breaker (59%)
-    fvgLow: "breakerLow",           // FVG plan: enter FVG (17%), target breaker (41%)
-    liqVoidLow: "equilHigh",        // LV: target equilibrium (53%)
-    breakerLow: "orderBlockHigh",   // Breaker plan: target OB (89%)
-    equilLow: "equilHigh",          // Equilibrium: target opposite equil (53%)
-    rejBlockLow: "orderBlockHigh",  // Rejection: target OB
-    rangeLow: "breakerHigh",        // Range low: target breaker
+    orderBlockLow:  "breakerHigh",    // OB (11%) → Breaker (59%)
+    fvgLow:         "breakerLow",     // FVG (17%) → Breaker (41%)
+    liqVoidLow:     "equilHigh",      // LV (29%) → Equil (53%)
+    breakerLow:     "orderBlockHigh", // Breaker (41%) → OB (89%)
+    equilLow:       "equilHigh",      // Equil (47%) → opposite equil (53%)
+    rejBlockLow:    "orderBlockHigh",
+    rangeLow:       "breakerHigh",
   };
   const shortMap: Record<string, keyof GoldbachLevels> = {
     orderBlockHigh: "breakerLow",
-    fvgHigh: "breakerHigh",
-    liqVoidHigh: "equilLow",
-    breakerHigh: "orderBlockLow",
-    equilHigh: "equilLow",
-    rejBlockHigh: "orderBlockLow",
-    rangeHigh: "breakerLow",
+    fvgHigh:        "breakerHigh",
+    liqVoidHigh:    "equilLow",
+    breakerHigh:    "orderBlockLow",
+    equilHigh:      "equilLow",
+    rejBlockHigh:   "orderBlockLow",
+    rangeHigh:      "breakerLow",
   };
-  const map = direction === "bullish" ? longMap : shortMap;
-  const targetKey = map[entryLevelName];
-  return targetKey ? levels[targetKey] : null;
+  const key = (direction === "bullish" ? longMap : shortMap)[entryLevelName];
+  return key ? levels[key] : null;
 }
 
-// Detect a recent stop run: price swept a short-term high/low then reversed
+// Detect 5m stop run: big wick followed by reversal
 function detectStopRun(candles5m: Candle[]): { detected: boolean; direction?: "bullish" | "bearish"; sweptLevel?: number } {
   if (candles5m.length < 6) return { detected: false };
   const recent = candles5m.slice(-6);
   const latest = recent[recent.length - 1];
-
-  // Look for a large wick that reversed: high wick + bearish close = bearish stop run (swept highs)
-  // low wick + bullish close = bullish stop run (swept lows, now going up)
   for (let i = 1; i < recent.length - 1; i++) {
     const c = recent[i];
     const upperWick = c.high - Math.max(c.open, c.close);
     const lowerWick = Math.min(c.open, c.close) - c.low;
-    const bodySize = Math.abs(c.close - c.open);
-
-    // Bullish stop run: swept lows (big lower wick), latest candle now above the wick candle's close
-    if (lowerWick > bodySize * 1.5 && lowerWick > 0 && latest.close > c.close) {
+    const body = Math.abs(c.close - c.open);
+    if (lowerWick > body * 1.5 && lowerWick > 0 && latest.close > c.close)
       return { detected: true, direction: "bullish", sweptLevel: c.low };
-    }
-    // Bearish stop run: swept highs (big upper wick), latest candle now below the wick candle's close
-    if (upperWick > bodySize * 1.5 && upperWick > 0 && latest.close < c.close) {
+    if (upperWick > body * 1.5 && upperWick > 0 && latest.close < c.close)
       return { detected: true, direction: "bearish", sweptLevel: c.high };
-    }
   }
   return { detected: false };
 }
 
-// AMD session phase based on UTC hour
-// London/Manipulation: 04:00-10:00 UTC | NY/Distribution: 10:00-20:00 UTC | Asia/Accumulation: rest
+// AMD session (UTC)
 function getAMDPhase(utcHour: number): "accumulation" | "manipulation" | "distribution" {
   if (utcHour >= 4 && utcHour < 10) return "manipulation";
   if (utcHour >= 10 && utcHour < 20) return "distribution";
@@ -216,35 +209,51 @@ export async function POST(req: NextRequest) {
   try {
     const { asset, leverage = 3 } = await req.json();
 
-    const [weeklyCandles, dailyCandles, h4Candles, candles5m, btcDailyCandles, btcH4Candles] =
-      await Promise.all([
-        fetchCandles(asset, "1d", 21), // 21 days for ADR-20 + weekly proxy
-        fetchCandles(asset, "1d", 5),
-        fetchCandles(asset, "4h", 10),
-        fetchCandles(asset, "5m", 30),
-        fetchCandles("BTC", "1d", 5),
-        fetchCandles("BTC", "4h", 10),
-      ]);
+    // Fetch all timeframes in parallel — 1H and 6H added
+    const [
+      weeklyCandles, dailyCandles,
+      h6Candles, h4Candles, h1Candles,
+      candles5m,
+      btcDailyCandles, btcH4Candles,
+    ] = await Promise.all([
+      fetchCandles(asset, "1d", 21),   // weekly proxy via daily
+      fetchCandles(asset, "1d", 5),
+      fetchCandles(asset, "6h", 12),   // 6H — 3 days of bars
+      fetchCandles(asset, "4h", 10),
+      fetchCandles(asset, "1h", 24),   // 1H — last 24 hours
+      fetchCandles(asset, "5m", 30),
+      fetchCandles("BTC", "1d", 5),
+      fetchCandles("BTC", "4h", 10),
+    ]);
 
     if (dailyCandles.length < 3 || h4Candles.length < 3 || candles5m.length < 5) {
       return NextResponse.json({ shouldTrade: false, reason: "Insufficient candle data" });
     }
 
-    // ── TheStrat: bar classification + FTFC ───────────────────────────────
-    const weeklyDir = getTFDirection(weeklyCandles);
-    const dailyDir = getTFDirection(dailyCandles);
-    const h4Dir = getTFDirection(h4Candles);
+    const currentPrice = candles5m[candles5m.length - 1].close;
+
+    // ── TheStrat bar types across all timeframes ──────────────────────────
+    const weeklyDir  = getTFDirection(weeklyCandles);
+    const dailyDir   = getTFDirection(dailyCandles);
+    const h6Dir      = getTFDirection(h6Candles);
+    const h4Dir      = getTFDirection(h4Candles);
+    const h1Dir      = getTFDirection(h1Candles);
     const btcDailyDir = getTFDirection(btcDailyCandles);
-    const btcH4Dir = getTFDirection(btcH4Candles);
+    const btcH4Dir   = getTFDirection(btcH4Candles);
 
-    const lastDaily = dailyCandles[dailyCandles.length - 1];
-    const prevDaily = dailyCandles[dailyCandles.length - 2];
-    const lastH4 = h4Candles[h4Candles.length - 1];
-    const prevH4 = h4Candles[h4Candles.length - 2];
+    const dailyBarType = classifyBar(dailyCandles[dailyCandles.length - 1], dailyCandles[dailyCandles.length - 2]);
+    const h6BarType   = h6Candles.length >= 2 ? classifyBar(h6Candles[h6Candles.length - 1], h6Candles[h6Candles.length - 2]) : "1";
+    const h4BarType   = classifyBar(h4Candles[h4Candles.length - 1], h4Candles[h4Candles.length - 2]);
+    const h1BarType   = h1Candles.length >= 2 ? classifyBar(h1Candles[h1Candles.length - 1], h1Candles[h1Candles.length - 2]) : "1";
 
-    const dailyBarType = classifyBar(lastDaily, prevDaily);
-    const h4BarType = classifyBar(lastH4, prevH4);
+    // FTFC: weekly + daily gate (core TheStrat requirement)
     const assetFTFC = calcFTFC(weeklyDir, dailyDir);
+
+    // Count how many intraday TFs agree with FTFC direction (1H, 4H, 6H)
+    const intradayTFs = [h1Dir, h4Dir, h6Dir];
+    const intradayAgreement = intradayTFs.filter(
+      d => (assetFTFC === "bullish" && d === "bullish") || (assetFTFC === "bearish" && d === "bearish")
+    ).length;
 
     const btcFTFC = calcFTFC(btcDailyDir, btcH4Dir);
     const btcAgreesWithAsset =
@@ -254,49 +263,81 @@ export async function POST(req: NextRequest) {
       (btcFTFC === "bullish" && assetFTFC === "bearish") ||
       (btcFTFC === "bearish" && assetFTFC === "bullish");
 
-    // ── TheStrat: key levels + break-and-hold ─────────────────────────────
-    const priorDayCandle = dailyCandles[dailyCandles.length - 2];
-    const priorDayHigh = priorDayCandle?.high ?? 0;
-    const priorDayLow = priorDayCandle?.low ?? 0;
+    // ── Prior highs/lows across all timeframes ────────────────────────────
+    const priorDay  = priorHL(dailyCandles);
+    const priorH6   = priorHL(h6Candles);
+    const priorH4   = priorHL(h4Candles);
+    const priorH1   = priorHL(h1Candles);
 
     const priorWeekSlice = weeklyCandles.slice(0, 7);
-    const priorWeekHigh = priorWeekSlice.length > 0 ? Math.max(...priorWeekSlice.map((c) => c.high)) : priorDayHigh * 1.05;
-    const priorWeekLow = priorWeekSlice.length > 0 ? Math.min(...priorWeekSlice.map((c) => c.low)) : priorDayLow * 0.95;
+    const priorWeekHigh = priorWeekSlice.length > 0 ? Math.max(...priorWeekSlice.map(c => c.high)) : priorDay.high * 1.05;
+    const priorWeekLow  = priorWeekSlice.length > 0 ? Math.min(...priorWeekSlice.map(c => c.low))  : priorDay.low  * 0.95;
 
-    const breakAndHoldBull = checkBreakAndHold(candles5m, priorDayHigh, "bullish");
-    const breakAndHoldBear = checkBreakAndHold(candles5m, priorDayLow, "bearish");
-    const currentPrice = candles5m[candles5m.length - 1].close;
+    // 5-min break-and-hold checks on each timeframe's key level
+    const bhDir = assetFTFC === "bullish" ? "bullish" : "bearish" as const;
+    const bh = {
+      daily: checkBreakAndHold(candles5m, assetFTFC === "bullish" ? priorDay.high : priorDay.low, bhDir),
+      h6:    h6Candles.length >= 2 && checkBreakAndHold(candles5m, assetFTFC === "bullish" ? priorH6.high  : priorH6.low,  bhDir),
+      h4:    checkBreakAndHold(candles5m, assetFTFC === "bullish" ? priorH4.high  : priorH4.low,  bhDir),
+      h1:    h1Candles.length >= 2 && checkBreakAndHold(candles5m, assetFTFC === "bullish" ? priorH1.high  : priorH1.low,  bhDir),
+    };
+    // At least the daily OR two intraday TFs must confirm break-and-hold
+    const breakAndHoldConfirmed = bh.daily || ([bh.h6, bh.h4, bh.h1].filter(Boolean).length >= 2);
 
-    // ── Goldbach: dealing range + levels ──────────────────────────────────
-    const adr = calcADR(weeklyCandles, 20);
-    const po3Size = nearestPO3(adr);
-    const dealingRange = calcDealingRange(currentPrice, po3Size);
-    const gbLevels = calcGoldbachLevels(dealingRange.low, dealingRange.high);
-    const nearestGB = nearestGoldbachLevel(currentPrice, gbLevels);
-    const atGBLevel = nearestGB.distPct < 1.5; // within 1.5% of a Goldbach level
-    const gbTpLevel = goldbachTpLevel(nearestGB.name, assetFTFC as "bullish" | "bearish", gbLevels);
+    // ── Goldbach: multi-timeframe dealing ranges and bias ─────────────────
+    // Main dealing range uses daily ADR (macro view)
+    const adr = calcAverageRange(weeklyCandles, 20);
+    const po3Main = nearestPO3(adr);
+    const drMain = calcDealingRange(currentPrice, po3Main);
+    const gbMain = calcGoldbachLevels(drMain.low, drMain.high);
+    const nearestGB = nearestGoldbachLevel(currentPrice, gbMain);
+    const atGBLevel = nearestGB.distPct < 1.5;
+    const gbTpLevel = goldbachTpLevel(nearestGB.name, assetFTFC as "bullish" | "bearish", gbMain);
     const gbTpDistPct = gbTpLevel ? Math.abs((gbTpLevel - currentPrice) / currentPrice) * 100 : null;
 
-    // ── Goldbach: stop run + AMD phase ────────────────────────────────────
+    // Goldbach directional bias per timeframe (discount=bull, premium=bear)
+    // Each TF uses an appropriately-sized PO3 range
+    const avgH4Range = calcAverageRange(h4Candles, 10);
+    const avgH1Range = calcAverageRange(h1Candles, 20);
+
+    const po3H4 = nearestPO3(avgH4Range);
+    const po3H1 = nearestPO3(avgH1Range);
+
+    const drH4 = calcDealingRange(currentPrice, po3H4);
+    const drH1 = calcDealingRange(currentPrice, po3H1);
+
+    const gbBiasDaily = goldbachBias(currentPrice, drMain.low, drMain.high);
+    const gbBiasH4    = goldbachBias(currentPrice, drH4.low, drH4.high);
+    const gbBiasH1    = goldbachBias(currentPrice, drH1.low, drH1.high);
+
+    // Count how many TF GB biases agree with FTFC
+    const gbBiases = [gbBiasDaily, gbBiasH4, gbBiasH1];
+    const gbAgreement = gbBiases.filter(
+      b => (assetFTFC === "bullish" && b === "bullish") || (assetFTFC === "bearish" && b === "bearish")
+    ).length;
+
+    // ── AMD + stop run ────────────────────────────────────────────────────
     const stopRun = detectStopRun(candles5m);
     const amdPhase = getAMDPhase(new Date().getUTCHours());
     const inManipulation = amdPhase === "manipulation";
 
-    // ── FTFC gate (same as before) ────────────────────────────────────────
+    // ── FTFC gate ─────────────────────────────────────────────────────────
     if (assetFTFC === "mixed") {
       return NextResponse.json({
         shouldTrade: false,
         reason: `FTFC mixed — weekly=${weeklyDir}, daily=${dailyDir}. No clear bias.`,
-        ftfc: assetFTFC, weeklyDir, dailyDir, h4Dir, dailyBarType, h4BarType,
+        ftfc: assetFTFC, weeklyDir, dailyDir, h4Dir, h1Dir, dailyBarType, h4BarType,
       });
     }
 
-    const requiredBreakAndHold = assetFTFC === "bullish" ? breakAndHoldBull : breakAndHoldBear;
-    if (!requiredBreakAndHold) {
+    if (!breakAndHoldConfirmed) {
       return NextResponse.json({
         shouldTrade: false,
-        reason: `FTFC ${assetFTFC} but 5-min break-and-hold not confirmed on ${assetFTFC === "bullish" ? "priorDayHigh" : "priorDayLow"} ($${(assetFTFC === "bullish" ? priorDayHigh : priorDayLow).toFixed(2)})`,
-        ftfc: assetFTFC, priorDayHigh, priorDayLow, weeklyDir, dailyDir, h4Dir, dailyBarType, h4BarType,
+        reason: `FTFC ${assetFTFC} but break-and-hold not confirmed on any key level (daily=${bh.daily}, 6H=${bh.h6}, 4H=${bh.h4}, 1H=${bh.h1})`,
+        ftfc: assetFTFC, weeklyDir, dailyDir, h4Dir, h1Dir, h6Dir,
+        priorDayHigh: priorDay.high, priorDayLow: priorDay.low,
+        priorH4High: priorH4.high, priorH4Low: priorH4.low,
+        priorH1High: priorH1.high, priorH1Low: priorH1.low,
       });
     }
 
@@ -304,86 +345,100 @@ export async function POST(req: NextRequest) {
       ? ((priorWeekHigh - currentPrice) / currentPrice) * 100
       : ((currentPrice - priorWeekLow) / currentPrice) * 100;
 
-    // ── Build Claude context ──────────────────────────────────────────────
+    // ── Context block for Claude ──────────────────────────────────────────
     const last5min = candles5m.slice(-5).map((c) =>
       `  ${new Date(c.time * 1000).toISOString().slice(11, 16)} o:${c.open.toFixed(2)} h:${c.high.toFixed(2)} l:${c.low.toFixed(2)} c:${c.close.toFixed(2)}`
     ).join("\n");
 
-    const gbLevelsList = Object.entries(gbLevels)
+    const gbLevelsList = Object.entries(gbMain)
       .map(([name, lvl]) => `  ${name.padEnd(18)}: $${(lvl as number).toFixed(2)}`)
       .join("\n");
+
+    const pctInRange = (((currentPrice - drMain.low) / (drMain.high - drMain.low)) * 100).toFixed(1);
 
     const contextBlock = `
 ASSET: ${asset}/USDT  |  PRICE: $${currentPrice.toFixed(2)}  |  LEVERAGE: ${leverage}x
 
-=== THESTRAT MULTI-TIMEFRAME ANALYSIS ===
-Weekly (proxy)   : ${weeklyDir}
-Daily            : ${dailyDir}  [bar: ${dailyBarType}]
-4H               : ${h4Dir}    [bar: ${h4BarType}]
-FTFC             : ${assetFTFC.toUpperCase()}
+=== THESTRAT MULTI-TIMEFRAME ===
+Weekly  : ${weeklyDir}
+Daily   : ${dailyDir}  [bar: ${dailyBarType}]
+6H      : ${h6Dir}    [bar: ${h6BarType}]
+4H      : ${h4Dir}    [bar: ${h4BarType}]
+1H      : ${h1Dir}    [bar: ${h1BarType}]
+FTFC    : ${assetFTFC.toUpperCase()}
+Intraday alignment (1H/4H/6H agree): ${intradayAgreement}/3 TFs
 
 === BTC MARKET FILTER ===
-BTC Daily/4H FTFC: ${btcFTFC.toUpperCase()}
-Alignment        : ${btcAgreesWithAsset ? "AGREES ✓ (high confidence)" : btcConflicts ? "CONFLICTS ✗ (reduce confidence)" : "neutral"}
+BTC FTFC : ${btcFTFC.toUpperCase()}
+Alignment: ${btcAgreesWithAsset ? "AGREES ✓" : btcConflicts ? "CONFLICTS ✗" : "neutral"}
 
-=== THESTRAT KEY LEVELS ===
-priorDayHigh : $${priorDayHigh.toFixed(2)}
-priorDayLow  : $${priorDayLow.toFixed(2)}
-priorWeekHigh: $${priorWeekHigh.toFixed(2)}
-priorWeekLow : $${priorWeekLow.toFixed(2)}
-Break-and-hold ${assetFTFC === "bullish" ? "ABOVE priorDayHigh" : "BELOW priorDayLow"}: CONFIRMED
+=== MULTI-TF KEY LEVELS ===
+priorWeekHigh: $${priorWeekHigh.toFixed(2)} / Low: $${priorWeekLow.toFixed(2)}
+priorDayHigh : $${priorDay.high.toFixed(2)} / Low: $${priorDay.low.toFixed(2)}  — 5m BnH: ${bh.daily ? "✓" : "✗"}
+prior6H High : $${priorH6.high.toFixed(2)} / Low: $${priorH6.low.toFixed(2)}   — 5m BnH: ${bh.h6 ? "✓" : "✗"}
+prior4H High : $${priorH4.high.toFixed(2)} / Low: $${priorH4.low.toFixed(2)}   — 5m BnH: ${bh.h4 ? "✓" : "✗"}
+prior1H High : $${priorH1.high.toFixed(2)} / Low: $${priorH1.low.toFixed(2)}   — 5m BnH: ${bh.h1 ? "✓" : "✗"}
+Break-and-hold confirmed: ${breakAndHoldConfirmed ? "YES ✓" : "NO ✗"}
 
-=== GOLDBACH DEALING RANGE (PO3 = ${po3Size}) ===
-ADR (20-day avg) : $${adr.toFixed(2)}
-Range            : $${dealingRange.low.toFixed(2)} → $${dealingRange.high.toFixed(2)}
-Current price    : $${currentPrice.toFixed(2)} (${(((currentPrice - dealingRange.low) / (dealingRange.high - dealingRange.low)) * 100).toFixed(1)}% of range)
+=== GOLDBACH ANALYSIS ===
+--- Main DR (PO3=${po3Main}, based on 20-day ADR=$${adr.toFixed(2)}) ---
+Range   : $${drMain.low.toFixed(2)} → $${drMain.high.toFixed(2)}
+Position: $${currentPrice.toFixed(2)} = ${pctInRange}% of range
+GB Bias : ${gbBiasDaily.toUpperCase()} (${parseFloat(pctInRange) < 47 ? "discount zone" : parseFloat(pctInRange) > 53 ? "premium zone" : "equilibrium"})
 
-Goldbach levels:
+--- 4H DR (PO3=${po3H4}, avg 4H range=$${avgH4Range.toFixed(2)}) ---
+Range   : $${drH4.low.toFixed(2)} → $${drH4.high.toFixed(2)}
+GB Bias : ${gbBiasH4.toUpperCase()}
+
+--- 1H DR (PO3=${po3H1}, avg 1H range=$${avgH1Range.toFixed(2)}) ---
+Range   : $${drH1.low.toFixed(2)} → $${drH1.high.toFixed(2)}
+GB Bias : ${gbBiasH1.toUpperCase()}
+
+Goldbach agreement with FTFC: ${gbAgreement}/3 TFs
+Nearest GB level (main DR): ${nearestGB.name} ($${nearestGB.level.toFixed(2)}, ${nearestGB.distPct.toFixed(2)}% away)
+AT Goldbach level: ${atGBLevel ? "YES ✓" : "NO — not at a key level yet"}
+${gbTpLevel ? `GB TP target: ${Object.entries(gbMain).find(([, v]) => v === gbTpLevel)?.[0] ?? ""} = $${gbTpLevel.toFixed(2)} (${gbTpDistPct?.toFixed(2)}% away)` : ""}
+
+Main DR Goldbach levels:
 ${gbLevelsList}
 
-Nearest GB level : ${nearestGB.name} ($${nearestGB.level.toFixed(2)}, ${nearestGB.distPct.toFixed(2)}% away)
-AT Goldbach level: ${atGBLevel ? "YES ✓ — strong entry zone" : "NO — not at a key level yet"}
-${gbTpLevel ? `Goldbach TP target: ${Object.entries(gbLevels).find(([, v]) => v === gbTpLevel)?.[0] ?? ""} = $${gbTpLevel.toFixed(2)} (${gbTpDistPct?.toFixed(2)}% away)` : ""}
-
 === AMD + STOP RUN ===
-Session phase    : ${amdPhase.toUpperCase()}${inManipulation ? " ✓ (ideal entry window: London Open)" : ""}
-Stop run detected: ${stopRun.detected ? `YES — ${stopRun.direction} (swept $${stopRun.sweptLevel?.toFixed(2)})` : "NO"}
+Session phase    : ${amdPhase.toUpperCase()}${inManipulation ? " ✓ ideal entry window" : ""}
+Stop run (5m)    : ${stopRun.detected ? `YES — ${stopRun.direction} (swept $${stopRun.sweptLevel?.toFixed(2)})` : "NO"}
 
-=== LAST 5×5-MIN CANDLES ===
+=== LAST 5×5-MIN ===
 ${last5min}
 
 === RISK RULES ===
-SL fixed at 30% of margin = ±${((0.30 / leverage) * 100).toFixed(2)}% price move at ${leverage}x.
-TP: prefer Goldbach target level when price is AT a GB level.
-If not at GB level, use distance to next TheStrat key level.
-Manipulation phase (London Open) + stop run + GB level = highest confidence.
-Equilibrium zone (47-53%) entries → smaller TP. OB/FVG entries → larger TP.
+SL fixed 30% margin = ±${((0.30 / leverage) * 100).toFixed(2)}% price at ${leverage}x.
+TP: use GB TP target when at a GB level. Otherwise use distance to next TheStrat level.
+Highest confidence: FTFC ✓ + intraday TFs agree + GB bias agrees + at GB level + stop run + London session.
 `.trim();
 
-    // ── No API key: rule-based fallback ──────────────────────────────────
+    // ── Rule-based fallback (no Claude key) ──────────────────────────────
     if (!process.env.ANTHROPIC_API_KEY) {
       const direction = assetFTFC === "bullish" ? "long" : "short";
-      let confidence = 60;
-      if ((assetFTFC === "bullish" && h4Dir === "bullish") || (assetFTFC === "bearish" && h4Dir === "bearish")) confidence += 10;
+      let confidence = 55;
+      confidence += intradayAgreement * 7;        // up to +21 for 1H/4H/6H
+      confidence += gbAgreement * 5;              // up to +15 for GB TF bias
       if (btcAgreesWithAsset) confidence += 10;
       if (btcConflicts) confidence -= 10;
       if (atGBLevel) confidence += 15;
-      if (stopRun.detected && stopRun.direction === direction.replace("long", "bullish").replace("short", "bearish")) confidence += 10;
+      if (stopRun.detected && stopRun.direction === (assetFTFC === "bullish" ? "bullish" : "bearish")) confidence += 10;
       if (inManipulation) confidence += 5;
 
-      // Prefer Goldbach TP if available and closer than the TheStrat level
       let tpPct: number;
-      if (gbTpLevel && gbTpDistPct !== null && gbTpDistPct < distToNextKeyLevelPct) {
+      if (gbTpLevel && gbTpDistPct !== null) {
         tpPct = Math.round(Math.min(100, Math.max(25, gbTpDistPct * leverage)));
       } else if (distToNextKeyLevelPct > 5) tpPct = 80;
       else if (distToNextKeyLevelPct < 2) tpPct = 30;
       else tpPct = 50;
 
-      if (h4Dir === "neutral") tpPct = Math.round(tpPct * 0.7);
+      if (h4Dir === "neutral" && h1Dir === "neutral") tpPct = Math.round(tpPct * 0.7);
 
       const slPricePct = 0.30 / leverage;
       const tpPricePct = tpPct / 100 / leverage;
-      const isSwing = (dailyBarType === "2U" || dailyBarType === "2D") && h4Dir !== "neutral" && btcAgreesWithAsset;
+      const isSwing = (dailyBarType === "2U" || dailyBarType === "2D") && intradayAgreement >= 2 && btcAgreesWithAsset;
 
       return NextResponse.json({
         shouldTrade: true, direction, leverage,
@@ -392,39 +447,44 @@ Equilibrium zone (47-53%) entries → smaller TP. OB/FVG entries → larger TP.
         entry: currentPrice,
         sl: direction === "long" ? currentPrice * (1 - slPricePct) : currentPrice * (1 + slPricePct),
         tp: direction === "long" ? currentPrice * (1 + tpPricePct) : currentPrice * (1 - tpPricePct),
-        reasoning: `Rule-based: FTFC ${assetFTFC}, ${dailyBarType}/${h4BarType}, BTC ${btcFTFC}. ${atGBLevel ? `At GB level (${nearestGB.name}).` : ""} ${stopRun.detected ? "Stop run detected." : ""} ${inManipulation ? "London session." : ""}`,
+        reasoning: `Rule-based: FTFC ${assetFTFC}, intraday ${intradayAgreement}/3, GB ${gbAgreement}/3, BTC ${btcFTFC}.${atGBLevel ? ` At ${nearestGB.name}.` : ""}${stopRun.detected ? " Stop run." : ""}${inManipulation ? " London." : ""}`,
         trailTriggerPct: 20, trailRetreatPct: 35,
-        ftfc: assetFTFC, weeklyDir, dailyDir, h4Dir, dailyBarType, h4BarType, btcFTFC,
-        priorDayHigh, priorDayLow, priorWeekHigh, priorWeekLow,
-        goldbachLevel: nearestGB.name, goldbachLevelPrice: nearestGB.level, atGoldbachLevel: atGBLevel,
-        goldbachTp: gbTpLevel, amdPhase, stopRunDetected: stopRun.detected,
+        ftfc: assetFTFC, weeklyDir, dailyDir, h6Dir, h4Dir, h1Dir,
+        dailyBarType, h6BarType, h4BarType, h1BarType, btcFTFC,
+        priorDayHigh: priorDay.high, priorDayLow: priorDay.low,
+        priorH6High: priorH6.high, priorH6Low: priorH6.low,
+        priorH4High: priorH4.high, priorH4Low: priorH4.low,
+        priorH1High: priorH1.high, priorH1Low: priorH1.low,
+        priorWeekHigh, priorWeekLow, intradayAgreement, gbAgreement,
+        goldbachLevel: nearestGB.name, goldbachLevelPrice: nearestGB.level,
+        atGoldbachLevel: atGBLevel, goldbachTp: gbTpLevel, gbBiasDaily, gbBiasH4, gbBiasH1,
+        po3Main, amdPhase, stopRunDetected: stopRun.detected,
       });
     }
 
     // ── Claude path ───────────────────────────────────────────────────────
-    const prompt = `You are an expert crypto trader combining TheStrat (Rob Smith) and Goldbach trading methodologies.
-All pre-conditions have been verified: FTFC is ${assetFTFC} and 5-min break-and-hold is confirmed.
+    const prompt = `You are an expert crypto trader using TheStrat (Rob Smith) + Goldbach methodology.
+All pre-conditions passed: FTFC=${assetFTFC}, break-and-hold confirmed.
 
 ${contextBlock}
 
-GOLDBACH TRADING RULES (from the Goldbach book):
-- BEST entries occur when price is AT a Goldbach level (within 1-2%) during the Manipulation phase (London Open) after a stop run
-- Goldbach entry hierarchy: Order Block (11/89%) > FVG (17/83%) > Breaker (41/59%) > Equilibrium (47/53%)
-- Goldbach TP: OB entry (11%) → target Breaker (59%); FVG entry (17%) → target Breaker (41%); Breaker (41%) → target OB (89%); Equil (47%) → target opposite equil (53%)
-- Stop run (price sweeps a high/low then reverses) INTO a Goldbach level = highest probability setup
-- If NOT at a Goldbach level: reduce confidence significantly, prefer smaller TP
-- AMD: Manipulation phase (London Open 04:00-10:00 UTC) is the ideal entry window
-- Combined with TheStrat FTFC: Goldbach gives entry precision, TheStrat gives directional bias
+DECISION RULES:
+TheStrat direction: FTFC (weekly+daily) is the master bias. Intraday TFs (1H/4H/6H) add conviction.
+Goldbach entries: enter at GB levels (OB=11/89%, FVG=17/83%, Breaker=41/59%, Equil=47/53%).
+Goldbach direction: when multiple TF GB biases (discount/premium) agree with FTFC, higher confidence.
+GB TP: OB→Breaker, FVG→Breaker, Breaker→OB, Equil→opposite Equil, LV→Equil.
+Best setup: FTFC ✓ + 2-3 intraday TFs agree + 2-3 GB TF biases agree + AT GB level + stop run + London session.
+Weaker setup: FTFC ✓ but intraday mixed + not at GB level → lower confidence or no trade.
 
 Decide:
-1. shouldTrade: Is this a high-probability entry? (false if not near a GB level AND no stop run AND not in manipulation phase)
-2. direction: "long" or "short" per FTFC
-3. confidence: 0-100 (boost if: at GB level +15, stop run detected +10, manipulation phase +10, BTC agrees +10)
-4. tpPct: 25-100 (% of margin). Prefer Goldbach TP level distance × leverage. If Goldbach TP = 3% price move at 5x leverage → 15% margin. Cap at 100.
-5. isSwing: true if daily 2U/2D + full MTF + BTC agrees + at OB/FVG level
+1. shouldTrade: true/false
+2. direction: "long" or "short" (follow FTFC)
+3. confidence: 0-100. Score: +7 per intraday TF agreement (max +21), +5 per GB TF bias agreement (max +15), +15 if at GB level, +10 stop run, +10 BTC agrees, +10 London session
+4. tpPct: 25-100 (% margin). Use GB TP distance × leverage if at a GB level. Otherwise TheStrat key level distance × leverage.
+5. isSwing: true if daily 2U/2D + all 3 intraday TFs agree + BTC agrees + at OB/FVG level
 6. trailTriggerPct: 15-40
 7. trailRetreatPct: 20-45
-8. reasoning: one sentence mentioning the Goldbach level and AMD phase
+8. reasoning: one sentence covering FTFC, which GB level, which TFs agreed
 
 Return ONLY this JSON:
 {
@@ -452,9 +512,10 @@ Return ONLY this JSON:
     if (!ai.shouldTrade) {
       return NextResponse.json({
         shouldTrade: false,
-        reason: ai.reasoning ?? "Claude declined the trade",
-        ftfc: assetFTFC, weeklyDir, dailyDir, h4Dir, dailyBarType, h4BarType, btcFTFC,
-        priorDayHigh, priorDayLow, goldbachLevel: nearestGB.name, amdPhase,
+        reason: ai.reasoning ?? "Claude declined",
+        ftfc: assetFTFC, weeklyDir, dailyDir, h6Dir, h4Dir, h1Dir,
+        dailyBarType, h4BarType, h1BarType, btcFTFC,
+        goldbachLevel: nearestGB.name, gbBiasDaily, gbBiasH4, gbBiasH1, amdPhase,
       });
     }
 
@@ -473,12 +534,18 @@ Return ONLY this JSON:
       reasoning: ai.reasoning ?? "",
       trailTriggerPct: ai.trailTriggerPct ?? 20,
       trailRetreatPct: ai.trailRetreatPct ?? 35,
-      ftfc: assetFTFC, weeklyDir, dailyDir, h4Dir, dailyBarType, h4BarType,
+      ftfc: assetFTFC, weeklyDir, dailyDir, h6Dir, h4Dir, h1Dir,
+      dailyBarType, h6BarType, h4BarType, h1BarType,
       btcFTFC, btcAgreesWithAsset, btcConflicts,
-      priorDayHigh, priorDayLow, priorWeekHigh, priorWeekLow, distToNextKeyLevelPct,
+      priorDayHigh: priorDay.high, priorDayLow: priorDay.low,
+      priorH6High: priorH6.high, priorH6Low: priorH6.low,
+      priorH4High: priorH4.high, priorH4Low: priorH4.low,
+      priorH1High: priorH1.high, priorH1Low: priorH1.low,
+      priorWeekHigh, priorWeekLow, distToNextKeyLevelPct,
+      intradayAgreement, gbAgreement, gbBiasDaily, gbBiasH4, gbBiasH1,
       goldbachLevel: nearestGB.name, goldbachLevelPrice: nearestGB.level,
       atGoldbachLevel: atGBLevel, goldbachTp: gbTpLevel,
-      po3Size, dealingRangeLow: dealingRange.low, dealingRangeHigh: dealingRange.high,
+      po3Main, dealingRangeLow: drMain.low, dealingRangeHigh: drMain.high,
       amdPhase, stopRunDetected: stopRun.detected,
     });
   } catch (e: unknown) {
