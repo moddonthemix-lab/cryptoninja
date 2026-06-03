@@ -30,14 +30,17 @@ export function useAuth() {
     // Sign
     const signature = await signMessageAsync({ message });
 
-    // Verify — also send nonce so server can validate without session cookie
+    // Verify
     const verifyRes = await fetch("/api/auth/verify", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message, signature, nonce }),
     });
 
-    if (!verifyRes.ok) throw new Error("Verification failed");
+    if (!verifyRes.ok) {
+      const errData = await verifyRes.json().catch(() => ({}));
+      throw new Error(errData.error || "Verification failed");
+    }
 
     setAuth(address, chainId);
   }, [address, chainId, signMessageAsync, setAuth]);

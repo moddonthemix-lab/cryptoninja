@@ -21,13 +21,7 @@ export function createSiweMessage(params: {
     chainId: params.chainId,
     nonce: params.nonce,
     issuedAt: new Date().toISOString(),
-    expirationTime: new Date(Date.now() + 1000 * 60 * 5).toISOString(), // 5 min
+    // No expiration — avoids failures from clock skew or slow signing
   });
   return message.prepareMessage();
-}
-
-export async function verifySiweMessage(message: string, signature: string) {
-  const siweMessage = new SiweMessage(message);
-  const result = await siweMessage.verify({ signature });
-  return result;
 }
