@@ -42,6 +42,10 @@ export function AutoTrader() {
   const tradesToday = getTradesToday();
   const MAX_TRADES = 5;
 
+  // Leverage risk color (text class + hex for the slider fill)
+  const levColor = autoTradeLeverage > 10 ? "text-red-400" : autoTradeLeverage > 5 ? "text-yellow-400" : "text-ninja-green";
+  const levHex = autoTradeLeverage > 10 ? "#ef4444" : autoTradeLeverage > 5 ? "#f59e0b" : "#10b981";
+
   return (
     <div className={cn(
       "bg-ninja-card border rounded-xl p-4 space-y-3.5",
@@ -114,30 +118,53 @@ export function AutoTrader() {
       </div>
 
       {/* Leverage control */}
-      <div>
-        <div className="flex justify-between text-xs mb-1">
-          <span className="text-ninja-muted">Leverage</span>
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-ninja-muted">Leverage</span>
           <span className={cn(
-            "font-mono font-bold",
-            autoTradeLeverage > 10 ? "text-red-400"
-            : autoTradeLeverage > 5 ? "text-yellow-400"
-            : "text-ninja-green"
+            "font-mono font-bold text-base tabular-nums",
+            levColor
           )}>
-            {autoTradeLeverage}x
+            {autoTradeLeverage}<span className="text-xs">x</span>
           </span>
         </div>
+
         <input
           type="range" min={1} max={20} step={1}
           value={autoTradeLeverage}
           onChange={(e) => setAutoTradeLeverage(Number(e.target.value))}
           disabled={autoTradeEnabled}
-          className="w-full accent-ninja-accent"
+          className="ninja-range"
+          style={{
+            // @ts-expect-error custom props
+            "--pct": `${((autoTradeLeverage - 1) / 19) * 100}%`,
+            "--fill": levHex,
+          }}
         />
-        <div className="flex justify-between text-xs text-ninja-muted mt-0.5">
-          <span>1x</span>
-          <span className="text-ninja-muted/60 text-center">SL fixed 30% · TP 25–100% (AI)</span>
-          <span>20x</span>
+
+        {/* Quick presets */}
+        <div className="flex gap-1">
+          {[2, 5, 10, 20].map((lev) => (
+            <button
+              key={lev}
+              onClick={() => setAutoTradeLeverage(lev)}
+              disabled={autoTradeEnabled}
+              className={cn(
+                "flex-1 py-1 rounded-md text-xs font-bold transition-all",
+                autoTradeLeverage === lev
+                  ? "bg-ninja-accent/20 text-ninja-accent border border-ninja-accent/40"
+                  : "bg-ninja-bg/40 text-ninja-muted hover:text-ninja-text border border-transparent",
+                autoTradeEnabled && "opacity-50 cursor-not-allowed"
+              )}
+            >
+              {lev}x
+            </button>
+          ))}
         </div>
+
+        <p className="text-ninja-muted/60 text-[10px] text-center pt-0.5">
+          SL fixed 30% · TP 25–100% (AI)
+        </p>
       </div>
 
       {/* Active position */}

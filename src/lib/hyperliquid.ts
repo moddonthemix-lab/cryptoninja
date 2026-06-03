@@ -281,14 +281,22 @@ export function buildPositionTpSlAction(
 ) {
   const isBuy = !positionIsLong; // closing order is opposite side
   const orders: any[] = [];
-  const mk = (triggerPx: number, tpsl: "tp" | "sl") => ({
-    a: assetIndex,
-    b: isBuy,
-    p: priceToWire(triggerPx, szDecimals), // market trigger uses triggerPx as limit
-    s: sizeToWire(size, szDecimals),
-    r: true, // reduceOnly
-    t: { trigger: { isMarket: true, triggerPx: priceToWire(triggerPx, szDecimals), tpsl } },
-  });
+  // For a MARKET trigger, the limit price (p) is the worst acceptable fill once
+  // triggered. To guarantee the close fills, bias it 10% in the closing
+  // direction: a sell (closing a long) accepts lower; a buy (closing a short)
+  // accepts higher. HL still fills at market; this is just the protective bound.
+  const SLIP = 0.1;
+  const mk = (triggerPx: number, tpsl: "tp" | "sl") => {
+    const limitPx = isBuy ? triggerPx * (1 + SLIP) : triggerPx * (1 - SLIP);
+    return {
+      a: assetIndex,
+      b: isBuy,
+      p: priceToWire(limitPx, szDecimals),
+      s: sizeToWire(size, szDecimals),
+      r: true, // reduceOnly
+      t: { trigger: { isMarket: true, triggerPx: priceToWire(triggerPx, szDecimals), tpsl } },
+    };
+  };
   if (takeProfit && takeProfit > 0) orders.push(mk(takeProfit, "tp"));
   if (stopLoss && stopLoss > 0) orders.push(mk(stopLoss, "sl"));
   return { type: "order", orders, grouping: "positionTpsl" };

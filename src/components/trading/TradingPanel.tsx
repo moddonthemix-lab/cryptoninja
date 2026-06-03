@@ -241,27 +241,51 @@ export function TradingPanel() {
           </div>
 
           {/* Leverage */}
-          <div>
-            <label className="label">Leverage: {leverage}x (max {maxLev}x)</label>
-            <input
-              type="range"
-              min={1}
-              max={Math.min(maxLev, 50)}
-              step={1}
-              value={leverage}
-              onChange={(e) => setLevHandle(parseInt(e.target.value))}
-              className="w-full accent-ninja-accent"
-            />
-            <div className="flex justify-between text-xs text-ninja-muted mt-0.5">
-              <span>1x</span>
-              <span className={cn(
-                leverage > 20 ? "text-red-400" : leverage > 10 ? "text-yellow-400" : "text-ninja-green"
-              )}>
-                {leverage}x {leverage > 20 ? "⚠️ Very High" : leverage > 10 ? "High" : "Moderate"}
-              </span>
-              <span>{Math.min(maxLev, 50)}x</span>
-            </div>
-          </div>
+          {(() => {
+            const lvMax = Math.min(maxLev, 50);
+            const lvHex = leverage > 20 ? "#ef4444" : leverage > 10 ? "#f59e0b" : "#10b981";
+            const lvColor = leverage > 20 ? "text-red-400" : leverage > 10 ? "text-yellow-400" : "text-ninja-green";
+            return (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="label mb-0">Leverage</span>
+                  <span className={cn("font-mono font-bold text-base tabular-nums", lvColor)}>
+                    {leverage}<span className="text-xs">x</span>
+                    <span className="text-ninja-muted/60 text-[10px] ml-1.5 font-normal">
+                      {leverage > 20 ? "Very High" : leverage > 10 ? "High" : "Moderate"}
+                    </span>
+                  </span>
+                </div>
+                <input
+                  type="range" min={1} max={lvMax} step={1}
+                  value={leverage}
+                  onChange={(e) => setLevHandle(parseInt(e.target.value))}
+                  className="ninja-range"
+                  style={{
+                    // @ts-expect-error custom props
+                    "--pct": `${((leverage - 1) / (lvMax - 1)) * 100}%`,
+                    "--fill": lvHex,
+                  }}
+                />
+                <div className="flex gap-1">
+                  {[2, 5, 10, 20].filter((l) => l <= lvMax).map((l) => (
+                    <button
+                      key={l}
+                      onClick={() => setLevHandle(l)}
+                      className={cn(
+                        "flex-1 py-1 rounded-md text-xs font-bold transition-all border",
+                        leverage === l
+                          ? "bg-ninja-accent/20 text-ninja-accent border-ninja-accent/40"
+                          : "bg-ninja-bg/40 text-ninja-muted hover:text-ninja-text border-transparent"
+                      )}
+                    >
+                      {l}x
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* SL / TP with on/off toggles */}
           <div className="grid grid-cols-2 gap-2">
