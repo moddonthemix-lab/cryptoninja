@@ -48,8 +48,6 @@ export const ASSETS: Record<string, AssetConfig> = {
   SOL:  mk("SOL", "Solana", "#9945ff", "◎", "crypto", "", "BINANCE:SOLUSDT"),
   // ── More crypto perps (main dex) ──
   DOGE: mk("DOGE", "Dogecoin", "#c2a633", "Ð", "crypto", "", "BINANCE:DOGEUSDT"),
-  WIF:  mk("WIF", "dogwifhat", "#d4a574", "W", "crypto", "", "BYBIT:WIFUSDT"),
-  PEPE: mk("PEPE", "Pepe", "#4caf50", "P", "crypto", "", "BINANCE:PEPEUSDT"),
   XRP:  mk("XRP", "Ripple", "#23292f", "X", "crypto", "", "BINANCE:XRPUSDT"),
   LINK: mk("LINK", "Chainlink", "#2a5ada", "L", "crypto", "", "BINANCE:LINKUSDT"),
   AVAX: mk("AVAX", "Avalanche", "#e84142", "A", "crypto", "", "BINANCE:AVAXUSDT"),
@@ -58,7 +56,6 @@ export const ASSETS: Record<string, AssetConfig> = {
   INJ:  mk("INJ", "Injective", "#00d2ff", "I", "crypto", "", "BINANCE:INJUSDT"),
   PENDLE: mk("PENDLE", "Pendle", "#3b9c8f", "P", "crypto", "", "BINANCE:PENDLEUSDT"),
   TRUMP: mk("TRUMP", "Trump", "#d4af37", "T", "crypto", "", "BINANCE:TRUMPUSDT"),
-  FARTCOIN: mk("FARTCOIN", "Fartcoin", "#8b6f47", "F", "crypto", "", "BYBIT:FARTCOINUSDT"),
   // ── Tokenized stocks (xyz dex) ──
   TSLA:  mk("TSLA", "Tesla", "#e82127", "T", "stock", "xyz", "NASDAQ:TSLA"),
   NVDA:  mk("NVDA", "NVIDIA", "#76b900", "N", "stock", "xyz", "NASDAQ:NVDA"),

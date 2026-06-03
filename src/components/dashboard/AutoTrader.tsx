@@ -44,33 +44,33 @@ export function AutoTrader() {
 
   return (
     <div className={cn(
-      "bg-ninja-card border rounded-xl p-4 space-y-4",
+      "bg-ninja-card border rounded-xl p-4 space-y-3.5",
       autoTradeEnabled ? "border-ninja-accent/40" : "border-ninja-border"
     )}>
       {/* Header + toggle */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Zap size={15} className={cn(autoTradeEnabled ? "text-ninja-accent" : "text-ninja-muted")} />
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <Zap size={15} className={cn("flex-shrink-0", autoTradeEnabled ? "text-ninja-accent" : "text-ninja-muted")} />
           <span className="font-bold text-sm text-ninja-text">Auto Trader</span>
           {isLive ? (
-            <span className="text-xs px-1.5 py-0.5 rounded bg-green-500/20 text-green-400 font-bold">LIVE</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/20 text-green-400 font-bold">LIVE</span>
           ) : (
-            <span className="text-xs px-1.5 py-0.5 rounded bg-ninja-border text-ninja-muted">PAPER</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-ninja-border text-ninja-muted">PAPER</span>
           )}
         </div>
         <button
           onClick={toggleAutoTrade}
           disabled={emergencyStop}
-          title={emergencyStop ? "Emergency stop active" : ""}
+          title={emergencyStop ? "Emergency stop active" : autoTradeEnabled ? "Turn off" : "Turn on"}
           className={cn(
-            "relative w-11 h-6 rounded-full transition-colors duration-200",
+            "relative w-11 h-6 rounded-full transition-colors duration-200 flex-shrink-0",
             autoTradeEnabled ? "bg-ninja-accent" : "bg-ninja-border",
             emergencyStop && "opacity-40 cursor-not-allowed"
           )}
         >
           <span className={cn(
             "absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200",
-            autoTradeEnabled ? "translate-x-5" : "translate-x-0.5"
+            autoTradeEnabled ? "translate-x-[22px]" : "translate-x-0.5"
           )} />
         </button>
       </div>
@@ -81,14 +81,14 @@ export function AutoTrader() {
         </div>
       )}
 
-      {/* Status */}
-      <div className="flex items-center gap-2">
-        <Activity size={12} className={STATE_COLOR[status.state]} />
-        <span className={cn("text-xs", STATE_COLOR[status.state])}>
+      {/* Status + last scan on one tidy row */}
+      <div className="flex items-center gap-2 bg-ninja-bg/40 rounded-lg px-2.5 py-2">
+        <Activity size={12} className={cn("flex-shrink-0", STATE_COLOR[status.state])} />
+        <span className={cn("text-xs truncate", STATE_COLOR[status.state])}>
           {STATE_LABEL[status.state]}
         </span>
         {status.lastScanTime && (
-          <span className="text-ninja-muted text-xs ml-auto">last: {status.lastScanTime}</span>
+          <span className="text-ninja-muted/70 text-[10px] ml-auto flex-shrink-0 font-mono">{status.lastScanTime}</span>
         )}
       </div>
 
@@ -101,7 +101,7 @@ export function AutoTrader() {
               <span
                 key={i}
                 className={cn(
-                  "w-2 h-2 rounded-full",
+                  "w-2 h-2 rounded-full transition-colors",
                   i < tradesToday ? "bg-ninja-accent" : "bg-ninja-border"
                 )}
               />

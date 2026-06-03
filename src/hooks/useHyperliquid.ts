@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useAccount } from "wagmi";
 import { useStore } from "@/store/useStore";
 import {
-  buildOrderAction, buildSetLeverageAction, buildCancelAction, buildTriggerOrder,
+  buildOrderAction, buildSetLeverageAction, buildCancelAction, buildPositionTpSlAction,
 } from "@/lib/hyperliquid";
 import type { Asset } from "@/types";
 
@@ -178,22 +178,16 @@ export function useHyperliquid() {
   }) => {
     const meta = assetMeta[asset];
     if (!meta) throw new Error(`Meta not loaded for ${asset}`);
+    if (!takeProfit && !stopLoss) return;
     setLoading(true);
     setError(null);
     try {
-      const results: any[] = [];
-      if (takeProfit && takeProfit > 0) {
-        results.push(await submitAction(
-          buildTriggerOrder(meta.assetId, positionIsLong, takeProfit, size, "tp", meta.szDecimals)
-        ));
-      }
-      if (stopLoss && stopLoss > 0) {
-        results.push(await submitAction(
-          buildTriggerOrder(meta.assetId, positionIsLong, stopLoss, size, "sl", meta.szDecimals)
-        ));
-      }
+      // Single positionTpsl action with both triggers — no main order
+      const result = await submitAction(
+        buildPositionTpSlAction(meta.assetId, positionIsLong, size, takeProfit, stopLoss, meta.szDecimals)
+      );
       await refreshAccount();
-      return results;
+      return result;
     } catch (e: any) {
       setError(e.message);
       throw e;

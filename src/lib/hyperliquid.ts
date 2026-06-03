@@ -266,38 +266,32 @@ export function buildOrderAction(
   };
 }
 
-// Build a TP/SL trigger order (reduce-only) to attach to a position.
-// `positionIsLong` is the direction of the OPEN position; the trigger closes it,
+// Build TP and/or SL trigger orders (reduce-only) to attach to an EXISTING
+// position. Uses grouping "positionTpsl" — required when there's no main order
+// (sending triggers under "normalTpsl" causes "Main order cannot be trigger order").
+// `positionIsLong` is the direction of the OPEN position; the triggers close it,
 // so a long position's TP/SL are sell (isBuy=false) orders and vice-versa.
-export function buildTriggerOrder(
+export function buildPositionTpSlAction(
   assetIndex: number,
   positionIsLong: boolean,
-  triggerPx: number,
   size: number,
-  tpsl: "tp" | "sl",
+  takeProfit: number | null | undefined,
+  stopLoss: number | null | undefined,
   szDecimals: number = 2
 ) {
   const isBuy = !positionIsLong; // closing order is opposite side
-  return {
-    type: "order",
-    orders: [
-      {
-        a: assetIndex,
-        b: isBuy,
-        p: priceToWire(triggerPx, szDecimals), // market trigger uses triggerPx as limit
-        s: sizeToWire(size, szDecimals),
-        r: true, // reduceOnly
-        t: {
-          trigger: {
-            isMarket: true,
-            triggerPx: priceToWire(triggerPx, szDecimals),
-            tpsl,
-          },
-        },
-      },
-    ],
-    grouping: "normalTpsl",
-  };
+  const orders: any[] = [];
+  const mk = (triggerPx: number, tpsl: "tp" | "sl") => ({
+    a: assetIndex,
+    b: isBuy,
+    p: priceToWire(triggerPx, szDecimals), // market trigger uses triggerPx as limit
+    s: sizeToWire(size, szDecimals),
+    r: true, // reduceOnly
+    t: { trigger: { isMarket: true, triggerPx: priceToWire(triggerPx, szDecimals), tpsl } },
+  });
+  if (takeProfit && takeProfit > 0) orders.push(mk(takeProfit, "tp"));
+  if (stopLoss && stopLoss > 0) orders.push(mk(stopLoss, "sl"));
+  return { type: "order", orders, grouping: "positionTpsl" };
 }
 
 // Build cancel action

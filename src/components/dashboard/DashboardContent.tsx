@@ -2,7 +2,7 @@
 
 import { useStore } from "@/store/useStore";
 import { useHyperliquid } from "@/hooks/useHyperliquid";
-import { TradingViewWidget } from "@/components/chart/TradingViewWidget";
+import { LightweightChart } from "@/components/chart/LightweightChart";
 import { StatsGrid } from "./StatsGrid";
 import { PositionsTable } from "./PositionsTable";
 import { MarketTicker } from "./MarketTicker";
@@ -79,8 +79,8 @@ export function DashboardContent() {
 
         {/* Chart column */}
         <div className="xl:col-span-3 flex flex-col gap-2">
-          {/* TradingView chart — use the built-in toolbar to change timeframes */}
-          <TradingViewWidget
+          {/* Native chart (lightweight-charts) — supports live entry/SL/TP lines */}
+          <LightweightChart
             asset={selectedAsset}
             height={520}
             entryPrice={chartEntry}
