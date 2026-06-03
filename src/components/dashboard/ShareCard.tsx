@@ -13,18 +13,119 @@ export interface SharePosition {
   leverage: number;
   entryPrice: number;
   markPrice: number;
-  pnlPct: number;        // ROE %
+  pnlPct: number; // ROE %
+}
+
+type BgVariant = "rings" | "aurora" | "rays" | "grid" | "mesh" | "minimal";
+const BG_VARIANTS: { id: BgVariant; label: string }[] = [
+  { id: "rings", label: "Rings" },
+  { id: "aurora", label: "Aurora" },
+  { id: "rays", label: "Rays" },
+  { id: "grid", label: "Grid" },
+  { id: "mesh", label: "Mesh" },
+  { id: "minimal", label: "Minimal" },
+];
+
+// Renders a creative backdrop for the given variant + accent color
+function Background({ variant, color, positive }: { variant: BgVariant; color: string; positive: boolean }) {
+  if (variant === "minimal") {
+    return (
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{ background: `radial-gradient(120% 90% at 80% 0%, ${color}1f 0%, transparent 55%)` }}
+      />
+    );
+  }
+
+  if (variant === "aurora") {
+    return (
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute rounded-full" style={{ width: 320, height: 320, top: -80, right: -60, background: color, opacity: 0.28, filter: "blur(70px)" }} />
+        <div className="absolute rounded-full" style={{ width: 260, height: 260, bottom: -90, left: -40, background: "#7c3aed", opacity: 0.25, filter: "blur(80px)" }} />
+        <div className="absolute rounded-full" style={{ width: 180, height: 180, top: "40%", left: "55%", background: color, opacity: 0.18, filter: "blur(60px)" }} />
+      </div>
+    );
+  }
+
+  if (variant === "rays") {
+    return (
+      <div className="absolute inset-0 pointer-events-none flex items-center justify-center overflow-hidden opacity-[0.22]">
+        <div className="relative" style={{ width: 0, height: 0, color }}>
+          {[...Array(24)].map((_, i) => (
+            <div
+              key={i}
+              className="absolute origin-bottom"
+              style={{
+                width: 2, height: 460, left: 0, bottom: 0,
+                background: `linear-gradient(to top, ${color}, transparent)`,
+                transform: `rotate(${i * 15}deg)`,
+              }}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (variant === "grid") {
+    return (
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        <div
+          className="absolute inset-0"
+          style={{
+            backgroundImage: `linear-gradient(${color}22 1px, transparent 1px), linear-gradient(90deg, ${color}22 1px, transparent 1px)`,
+            backgroundSize: "32px 32px",
+            maskImage: "radial-gradient(120% 80% at 70% 20%, #000 30%, transparent 75%)",
+            WebkitMaskImage: "radial-gradient(120% 80% at 70% 20%, #000 30%, transparent 75%)",
+          }}
+        />
+        <div className="absolute inset-0" style={{ background: `radial-gradient(100% 70% at 80% 10%, ${color}22 0%, transparent 60%)` }} />
+      </div>
+    );
+  }
+
+  if (variant === "mesh") {
+    return (
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute rounded-full" style={{ width: 240, height: 240, top: -40, left: -40, background: color, opacity: 0.22, filter: "blur(60px)" }} />
+        <div className="absolute rounded-full" style={{ width: 220, height: 220, top: 30, right: -60, background: "#06b6d4", opacity: 0.18, filter: "blur(60px)" }} />
+        <div className="absolute rounded-full" style={{ width: 260, height: 260, bottom: -100, left: "30%", background: "#7c3aed", opacity: 0.22, filter: "blur(70px)" }} />
+      </div>
+    );
+  }
+
+  // rings (default)
+  return (
+    <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.18]">
+      <div className="relative" style={{ color }}>
+        {[...Array(9)].map((_, i) => (
+          <div
+            key={i}
+            className="absolute rounded-full border"
+            style={{
+              width: `${(i + 1) * 56}px`, height: `${(i + 1) * 56}px`,
+              borderColor: "currentColor",
+              left: `${-(i + 1) * 28}px`, top: `${-(i + 1) * 28}px`,
+            }}
+          />
+        ))}
+        {positive ? <TrendingUp size={48} /> : <TrendingDown size={48} />}
+      </div>
+    </div>
+  );
 }
 
 export function ShareCard({ position, onClose }: { position: SharePosition; onClose: () => void }) {
   const cardRef = useRef<HTMLDivElement>(null);
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [bg, setBg] = useState<BgVariant>("aurora");
 
   const cfg = ASSETS[position.asset];
   const isLong = position.direction === "long";
   const pnl = position.pnlPct;
   const positive = pnl >= 0;
+  const accent = positive ? "#10b981" : "#ef4444";
   const appUrl = typeof window !== "undefined" ? window.location.origin : "https://cryptoninja.app";
 
   const [text, setText] = useState(
@@ -57,7 +158,7 @@ export function ShareCard({ position, onClose }: { position: SharePosition; onCl
 
   const shareX = () => {
     const tweet = `${text}\n\n${positive ? "+" : ""}${pnl.toFixed(1)}% on $${position.asset}`;
-    window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(tweet)}&url=${encodeURIComponent(appUrl)}`, "_blank");
+    window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(tweet)}`, "_blank");
   };
 
   return (
@@ -74,23 +175,7 @@ export function ShareCard({ position, onClose }: { position: SharePosition; onCl
           ref={cardRef}
           className="relative flex-1 rounded-xl overflow-hidden border border-ninja-border bg-gradient-to-br from-ninja-bg to-[#0d0d16] p-6 min-h-[340px]"
         >
-          {/* Concentric ring backdrop */}
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.18]">
-            <div className={cn("relative", positive ? "text-ninja-green" : "text-ninja-red")}>
-              {[...Array(9)].map((_, i) => (
-                <div
-                  key={i}
-                  className="absolute rounded-full border"
-                  style={{
-                    width: `${(i + 1) * 56}px`, height: `${(i + 1) * 56}px`,
-                    borderColor: "currentColor",
-                    left: `${-(i + 1) * 28}px`, top: `${-(i + 1) * 28}px`,
-                  }}
-                />
-              ))}
-              {positive ? <TrendingUp size={48} /> : <TrendingDown size={48} />}
-            </div>
-          </div>
+          <Background variant={bg} color={accent} positive={positive} />
 
           {/* Brand */}
           <div className="relative flex items-center gap-2 mb-6">
@@ -136,8 +221,6 @@ export function ShareCard({ position, onClose }: { position: SharePosition; onCl
               </div>
             </div>
           </div>
-
-          <div className="relative text-ninja-muted/60 text-xs mt-5">{appUrl.replace(/^https?:\/\//, "")}</div>
         </div>
 
         {/* ── Controls ── */}
@@ -147,6 +230,29 @@ export function ShareCard({ position, onClose }: { position: SharePosition; onCl
             <button onClick={onClose} className="text-ninja-muted hover:text-ninja-text p-1 rounded">
               <X size={16} />
             </button>
+          </div>
+
+          {/* Background picker */}
+          <div>
+            <label className="text-xs text-ninja-muted mb-1.5 block">Background</label>
+            <div className="grid grid-cols-3 gap-1.5">
+              {BG_VARIANTS.map((v) => (
+                <button
+                  key={v.id}
+                  onClick={() => setBg(v.id)}
+                  className={cn(
+                    "relative h-12 rounded-lg overflow-hidden border transition-all",
+                    bg === v.id ? "border-ninja-accent ring-1 ring-ninja-accent" : "border-ninja-border hover:border-ninja-accent/50"
+                  )}
+                  title={v.label}
+                >
+                  <div className="absolute inset-0 bg-gradient-to-br from-ninja-bg to-[#0d0d16]">
+                    <Background variant={v.id} color={accent} positive={positive} />
+                  </div>
+                  <span className="absolute bottom-0.5 left-1 text-[9px] text-ninja-text/80 font-bold z-10">{v.label}</span>
+                </button>
+              ))}
+            </div>
           </div>
 
           <div>
