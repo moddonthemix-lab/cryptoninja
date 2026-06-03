@@ -30,7 +30,9 @@ export function getAgentAccount() {
   const pk = process.env.HL_AGENT_PRIVATE_KEY;
   if (!pk) return null;
   try {
-    const key = pk.startsWith("0x") ? pk : `0x${pk}`;
+    // Strip whitespace/newlines in case Railway stored it across multiple lines
+    const clean = pk.replace(/\s+/g, "");
+    const key = clean.startsWith("0x") ? clean : `0x${clean}`;
     return privateKeyToAccount(key as `0x${string}`);
   } catch {
     return null;
