@@ -268,15 +268,30 @@ export async function POST(req: NextRequest) {
     const priorWeekHigh = priorWeekSlice.length > 0 ? Math.max(...priorWeekSlice.map(c => c.high)) : priorDay.high * 1.05;
     const priorWeekLow  = priorWeekSlice.length > 0 ? Math.min(...priorWeekSlice.map(c => c.low))  : priorDay.low  * 0.95;
 
-    // 5-min break-and-hold checks on each timeframe's key level
-    const bhDir = assetFTFC === "bullish" ? "bullish" : "bearish" as const;
+    // 5-min break-and-hold checked in BOTH directions on each timeframe:
+    // Bullish BnH = 5m breaks ABOVE prior candle high and holds → long confirmation
+    // Bearish BnH = 5m breaks BELOW prior candle low and holds  → short confirmation
     const bh = {
-      daily: checkBreakAndHold(candles5m, assetFTFC === "bullish" ? priorDay.high : priorDay.low, bhDir),
-      h4:    checkBreakAndHold(candles5m, assetFTFC === "bullish" ? priorH4.high  : priorH4.low,  bhDir),
-      h1:    h1Candles.length >= 2 && checkBreakAndHold(candles5m, assetFTFC === "bullish" ? priorH1.high  : priorH1.low,  bhDir),
+      dailyBull: checkBreakAndHold(candles5m, priorDay.high, "bullish"),
+      dailyBear: checkBreakAndHold(candles5m, priorDay.low,  "bearish"),
+      h4Bull:    checkBreakAndHold(candles5m, priorH4.high,  "bullish"),
+      h4Bear:    checkBreakAndHold(candles5m, priorH4.low,   "bearish"),
+      h1Bull:    h1Candles.length >= 2 && checkBreakAndHold(candles5m, priorH1.high, "bullish"),
+      h1Bear:    h1Candles.length >= 2 && checkBreakAndHold(candles5m, priorH1.low,  "bearish"),
     };
-    // At least the daily OR two intraday TFs must confirm break-and-hold
-    const breakAndHoldConfirmed = bh.daily || ([bh.h4, bh.h1].filter(Boolean).length >= 2);
+
+    const bullishBHCount = [bh.dailyBull, bh.h4Bull, bh.h1Bull].filter(Boolean).length;
+    const bearishBHCount = [bh.dailyBear, bh.h4Bear, bh.h1Bear].filter(Boolean).length;
+
+    // Which direction the 5m is actually confirming right now
+    const bhDetectedDir = bullishBHCount > bearishBHCount ? "bullish"
+      : bearishBHCount > bullishBHCount ? "bearish"
+      : "mixed";
+
+    // Valid when detected direction matches FTFC (at least 1 TF confirmed)
+    const breakAndHoldConfirmed = assetFTFC === "bullish"
+      ? bullishBHCount >= 1
+      : bearishBHCount >= 1;
 
     // ── Goldbach: multi-timeframe dealing ranges and bias ─────────────────
     // Main dealing range uses daily ADR (macro view)
@@ -327,7 +342,7 @@ export async function POST(req: NextRequest) {
     if (!breakAndHoldConfirmed) {
       return NextResponse.json({
         shouldTrade: false,
-        reason: `FTFC ${assetFTFC} but break-and-hold not confirmed on any key level (daily=${bh.daily}, 4H=${bh.h4}, 1H=${bh.h1})`,
+        reason: `FTFC ${assetFTFC} but 5m BnH detected as ${bhDetectedDir} — needs ${assetFTFC} (daily: bull=${bh.dailyBull}/bear=${bh.dailyBear}, 4H: bull=${bh.h4Bull}/bear=${bh.h4Bear}, 1H: bull=${bh.h1Bull}/bear=${bh.h1Bear})`,
         ftfc: assetFTFC, weeklyDir, dailyDir, h4Dir, h1Dir,
         priorDayHigh: priorDay.high, priorDayLow: priorDay.low,
         priorH4High: priorH4.high, priorH4Low: priorH4.low,
@@ -367,10 +382,11 @@ Alignment: ${btcAgreesWithAsset ? "AGREES ✓" : btcConflicts ? "CONFLICTS ✗" 
 
 === MULTI-TF KEY LEVELS ===
 priorWeekHigh: $${priorWeekHigh.toFixed(2)} / Low: $${priorWeekLow.toFixed(2)}
-priorDayHigh : $${priorDay.high.toFixed(2)} / Low: $${priorDay.low.toFixed(2)}  — 5m BnH: ${bh.daily ? "✓" : "✗"}
-prior4H High : $${priorH4.high.toFixed(2)} / Low: $${priorH4.low.toFixed(2)}   — 5m BnH: ${bh.h4 ? "✓" : "✗"}
-prior1H High : $${priorH1.high.toFixed(2)} / Low: $${priorH1.low.toFixed(2)}   — 5m BnH: ${bh.h1 ? "✓" : "✗"}
-Break-and-hold confirmed: ${breakAndHoldConfirmed ? "YES ✓" : "NO ✗"}
+priorDayHigh : $${priorDay.high.toFixed(2)} / Low: $${priorDay.low.toFixed(2)}  — 5m BnH bull=${bh.dailyBull ? "✓" : "✗"} bear=${bh.dailyBear ? "✓" : "✗"}
+prior4H High : $${priorH4.high.toFixed(2)} / Low: $${priorH4.low.toFixed(2)}   — 5m BnH bull=${bh.h4Bull ? "✓" : "✗"} bear=${bh.h4Bear ? "✓" : "✗"}
+prior1H High : $${priorH1.high.toFixed(2)} / Low: $${priorH1.low.toFixed(2)}   — 5m BnH bull=${bh.h1Bull ? "✓" : "✗"} bear=${bh.h1Bear ? "✓" : "✗"}
+5m BnH direction detected : ${bhDetectedDir.toUpperCase()} (bull=${bullishBHCount}/3 TFs, bear=${bearishBHCount}/3 TFs)
+Break-and-hold confirmed  : ${breakAndHoldConfirmed ? `YES ✓ — ${assetFTFC} direction confirmed` : `NO ✗ — ${bhDetectedDir} signal conflicts with FTFC ${assetFTFC}`}
 
 === GOLDBACH ANALYSIS ===
 --- Main DR (PO3=${po3Main}, based on 20-day ADR=$${adr.toFixed(2)}) ---
