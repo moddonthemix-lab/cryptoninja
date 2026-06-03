@@ -203,7 +203,6 @@ export async function POST(req: NextRequest) {
     // priorWeek = aggregate of the FIRST 7 daily candles in the 14-day window
     // (days 0-6 = prior week, days 7-13 = current week)
     const priorWeekSlice = weeklyCandles.slice(0, 7);
-    const currWeekSlice  = weeklyCandles.slice(7);
     const priorWeekHigh =
       priorWeekSlice.length > 0
         ? Math.max(...priorWeekSlice.map((c) => c.high))
@@ -212,7 +211,6 @@ export async function POST(req: NextRequest) {
       priorWeekSlice.length > 0
         ? Math.min(...priorWeekSlice.map((c) => c.low))
         : priorDayLow * 0.95;
-    // currWeekSlice is available if needed for weeklyDir context (already computed above)
 
     // ── 5. 5-min break-and-hold ───────────────────────────────────────────
     const breakAndHoldBull = checkBreakAndHold(candles5m, priorDayHigh, "bullish");
