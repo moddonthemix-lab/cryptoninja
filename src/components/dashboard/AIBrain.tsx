@@ -47,7 +47,7 @@ export function AIBrain() {
     setLoadingOverview(true);
     setError(null);
     try {
-      const res = await fetch("/api/ai/analyze");
+      const res = await fetch("/api/ai/analyze?overview=1");
       const data = await res.json();
       if (data.error) {
         setError(data.error);

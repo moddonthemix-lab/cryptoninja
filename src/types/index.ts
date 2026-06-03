@@ -1,4 +1,7 @@
-export type Asset = "BTC" | "ETH" | "HYPE" | "SOL";
+// Asset is now an open string (a ticker symbol) so we can support any
+// Hyperliquid market across the crypto perps dex and the "xyz" equities dex.
+export type Asset = string;
+export type AssetCategory = "crypto" | "stock" | "commodity";
 export type Direction = "long" | "short";
 export type TradingMode = "paper" | "live" | "backtest";
 export type TradeStatus = "open" | "closed" | "liquidated" | "cancelled";
@@ -8,53 +11,85 @@ export type ConditionOperator = "gt" | "lt" | "gte" | "lte" | "crosses_above" | 
 export type ConditionType = "indicator" | "price_action" | "volume" | "ai";
 
 export interface AssetConfig {
-  symbol: Asset;
-  name: string;
-  binancePair: string;
-  coingeckoId: string;
+  symbol: Asset;          // our display ticker, e.g. "TSLA"
+  name: string;           // full name
   color: string;
   icon: string;
-  decimals: number;
+  category: AssetCategory;
+  // Hyperliquid routing
+  dex: "" | "xyz";        // "" = main crypto perps dex, "xyz" = equities/commodities
+  hlCoin: string;         // coin name in HL API ("BTC" or "xyz:TSLA")
+  // TradingView chart symbol
+  tvSymbol: string;
+  // legacy fields kept for compatibility
+  binancePair?: string;
+  coingeckoId?: string;
+  decimals?: number;
 }
 
-export const ASSETS: Record<Asset, AssetConfig> = {
-  BTC: {
-    symbol: "BTC",
-    name: "Bitcoin",
-    binancePair: "BTCUSDT",
-    coingeckoId: "bitcoin",
-    color: "#f7931a",
-    icon: "₿",
+// Compact factory to keep the registry readable
+function mk(
+  symbol: string, name: string, color: string, icon: string,
+  category: AssetCategory, dex: "" | "xyz", tvSymbol: string
+): AssetConfig {
+  return {
+    symbol, name, color, icon, category, dex,
+    hlCoin: dex === "xyz" ? `xyz:${symbol}` : symbol,
+    tvSymbol,
     decimals: 8,
-  },
-  ETH: {
-    symbol: "ETH",
-    name: "Ethereum",
-    binancePair: "ETHUSDT",
-    coingeckoId: "ethereum",
-    color: "#627eea",
-    icon: "Ξ",
-    decimals: 18,
-  },
-  HYPE: {
-    symbol: "HYPE",
-    name: "Hyperliquid",
-    binancePair: "HYPEUSDT",
-    coingeckoId: "hyperliquid",
-    color: "#00d4aa",
-    icon: "H",
-    decimals: 8,
-  },
-  SOL: {
-    symbol: "SOL",
-    name: "Solana",
-    binancePair: "SOLUSDT",
-    coingeckoId: "solana",
-    color: "#9945ff",
-    icon: "◎",
-    decimals: 9,
-  },
+  };
+}
+
+export const ASSETS: Record<string, AssetConfig> = {
+  // ── Core crypto (main dex) ──
+  BTC:  mk("BTC", "Bitcoin", "#f7931a", "₿", "crypto", "", "BINANCE:BTCUSDT"),
+  ETH:  mk("ETH", "Ethereum", "#627eea", "Ξ", "crypto", "", "BINANCE:ETHUSDT"),
+  HYPE: mk("HYPE", "Hyperliquid", "#00d4aa", "H", "crypto", "", "BYBIT:HYPEUSDT"),
+  SOL:  mk("SOL", "Solana", "#9945ff", "◎", "crypto", "", "BINANCE:SOLUSDT"),
+  // ── More crypto perps (main dex) ──
+  DOGE: mk("DOGE", "Dogecoin", "#c2a633", "Ð", "crypto", "", "BINANCE:DOGEUSDT"),
+  WIF:  mk("WIF", "dogwifhat", "#d4a574", "W", "crypto", "", "BYBIT:WIFUSDT"),
+  PEPE: mk("PEPE", "Pepe", "#4caf50", "P", "crypto", "", "BINANCE:PEPEUSDT"),
+  XRP:  mk("XRP", "Ripple", "#23292f", "X", "crypto", "", "BINANCE:XRPUSDT"),
+  LINK: mk("LINK", "Chainlink", "#2a5ada", "L", "crypto", "", "BINANCE:LINKUSDT"),
+  AVAX: mk("AVAX", "Avalanche", "#e84142", "A", "crypto", "", "BINANCE:AVAXUSDT"),
+  SUI:  mk("SUI", "Sui", "#4da2ff", "S", "crypto", "", "BINANCE:SUIUSDT"),
+  ONDO: mk("ONDO", "Ondo", "#3b82f6", "O", "crypto", "", "BINANCE:ONDOUSDT"),
+  INJ:  mk("INJ", "Injective", "#00d2ff", "I", "crypto", "", "BINANCE:INJUSDT"),
+  PENDLE: mk("PENDLE", "Pendle", "#3b9c8f", "P", "crypto", "", "BINANCE:PENDLEUSDT"),
+  TRUMP: mk("TRUMP", "Trump", "#d4af37", "T", "crypto", "", "BINANCE:TRUMPUSDT"),
+  FARTCOIN: mk("FARTCOIN", "Fartcoin", "#8b6f47", "F", "crypto", "", "BYBIT:FARTCOINUSDT"),
+  // ── Tokenized stocks (xyz dex) ──
+  TSLA:  mk("TSLA", "Tesla", "#e82127", "T", "stock", "xyz", "NASDAQ:TSLA"),
+  NVDA:  mk("NVDA", "NVIDIA", "#76b900", "N", "stock", "xyz", "NASDAQ:NVDA"),
+  AAPL:  mk("AAPL", "Apple", "#a2aaad", "", "stock", "xyz", "NASDAQ:AAPL"),
+  MSFT:  mk("MSFT", "Microsoft", "#00a4ef", "M", "stock", "xyz", "NASDAQ:MSFT"),
+  GOOGL: mk("GOOGL", "Alphabet", "#4285f4", "G", "stock", "xyz", "NASDAQ:GOOGL"),
+  AMZN:  mk("AMZN", "Amazon", "#ff9900", "a", "stock", "xyz", "NASDAQ:AMZN"),
+  META:  mk("META", "Meta", "#0668e1", "M", "stock", "xyz", "NASDAQ:META"),
+  AMD:   mk("AMD", "AMD", "#ed1c24", "A", "stock", "xyz", "NASDAQ:AMD"),
+  MSTR:  mk("MSTR", "MicroStrategy", "#f7931a", "M", "stock", "xyz", "NASDAQ:MSTR"),
+  COIN:  mk("COIN", "Coinbase", "#0052ff", "C", "stock", "xyz", "NASDAQ:COIN"),
+  PLTR:  mk("PLTR", "Palantir", "#101113", "P", "stock", "xyz", "NASDAQ:PLTR"),
+  ORCL:  mk("ORCL", "Oracle", "#f80000", "O", "stock", "xyz", "NYSE:ORCL"),
+  SPCX:  mk("SPCX", "SpaceX (pre-IPO)", "#005288", "S", "stock", "xyz", "AMEX:SPY"),
+  INTC:  mk("INTC", "Intel", "#0071c5", "i", "stock", "xyz", "NASDAQ:INTC"),
+  MU:    mk("MU", "Micron", "#0066b3", "M", "stock", "xyz", "NASDAQ:MU"),
+  CRCL:  mk("CRCL", "Circle", "#4ade80", "C", "stock", "xyz", "NYSE:CRCL"),
+  HOOD:  mk("HOOD", "Robinhood", "#00c805", "H", "stock", "xyz", "NASDAQ:HOOD"),
+  NFLX:  mk("NFLX", "Netflix", "#e50914", "N", "stock", "xyz", "NASDAQ:NFLX"),
+  // ── Commodities (xyz dex) ──
+  GOLD:     mk("GOLD", "Gold", "#ffd700", "Au", "commodity", "xyz", "OANDA:XAUUSD"),
+  SILVER:   mk("SILVER", "Silver", "#c0c0c0", "Ag", "commodity", "xyz", "OANDA:XAGUSD"),
+  CL:       mk("CL", "Crude Oil (WTI)", "#3d3d3d", "Oil", "commodity", "xyz", "TVC:USOIL"),
+  BRENTOIL: mk("BRENTOIL", "Brent Oil", "#2d2d2d", "Br", "commodity", "xyz", "TVC:UKOIL"),
+  NATGAS:   mk("NATGAS", "Natural Gas", "#4a90d9", "NG", "commodity", "xyz", "TVC:NATGASUSD"),
+  COPPER:   mk("COPPER", "Copper", "#b87333", "Cu", "commodity", "xyz", "TVC:COPPER"),
 };
+
+// All ticker symbols, grouped for the UI picker
+export const ASSET_LIST: Asset[] = Object.keys(ASSETS);
+export const DEFAULT_WATCHLIST: Asset[] = ["BTC", "ETH", "SOL", "HYPE"];
 
 export interface StrategyCondition {
   id: string;

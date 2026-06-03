@@ -6,11 +6,9 @@ import { StatsGrid } from "./StatsGrid";
 import { PositionsTable } from "./PositionsTable";
 import { MarketTicker } from "./MarketTicker";
 import { RightPanel } from "./RightPanel";
-import type { Asset } from "@/types";
-import { ASSETS } from "@/types";
+import { AssetPicker } from "./AssetPicker";
+import { ASSETS, DEFAULT_WATCHLIST } from "@/types";
 import { cn } from "@/lib/utils";
-
-const ALL_ASSETS: Asset[] = ["BTC", "ETH", "HYPE", "SOL"];
 
 export function DashboardContent() {
   const { selectedAsset, setSelectedAsset, marketData, openPositions, aiSignals } = useStore();
@@ -18,44 +16,56 @@ export function DashboardContent() {
   const aiSignal = aiSignals[selectedAsset];
   const activePos = openPositions.find((p) => p.asset === selectedAsset && p.isOpen);
 
+  // Quick-access watchlist: defaults + the current selection if it's not in defaults
+  const quickList = DEFAULT_WATCHLIST.includes(selectedAsset)
+    ? DEFAULT_WATCHLIST
+    : [selectedAsset, ...DEFAULT_WATCHLIST];
+
+  const selData = marketData[selectedAsset];
+  const selUp = (selData?.changePercent24h ?? 0) >= 0;
+
   return (
     <div className="space-y-3">
       <MarketTicker />
 
-      {/* Asset tabs + inline stats bar */}
+      {/* Picker + quick watchlist + current price + inline stats */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          {ALL_ASSETS.map((asset) => {
-            const data = marketData[asset];
-            const up = (data?.changePercent24h ?? 0) >= 0;
-            const isSelected = selectedAsset === asset;
-            return (
-              <button
-                key={asset}
-                onClick={() => setSelectedAsset(asset)}
-                className={cn(
-                  "flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all",
-                  isSelected
-                    ? "border-ninja-accent bg-ninja-accent/10"
-                    : "border-ninja-border bg-ninja-card hover:border-ninja-accent/40"
-                )}
-              >
-                <span className="font-bold text-xs" style={{ color: ASSETS[asset].color }}>
+        <div className="flex items-center gap-2 flex-wrap">
+          <AssetPicker />
+
+          {/* Current selection price headline */}
+          {selData && selData.price > 0 && (
+            <div className="flex items-baseline gap-2 px-2">
+              <span className="font-mono font-bold text-ninja-text text-sm">
+                ${selData.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: selData.price < 1 ? 6 : 2 })}
+              </span>
+              <span className={cn("text-xs font-mono", selUp ? "text-ninja-green" : "text-ninja-red")}>
+                {selUp ? "+" : ""}{selData.changePercent24h.toFixed(2)}%
+              </span>
+            </div>
+          )}
+
+          {/* Quick watchlist chips */}
+          <div className="hidden md:flex items-center gap-1">
+            {quickList.map((asset) => {
+              const isSel = selectedAsset === asset;
+              return (
+                <button
+                  key={asset}
+                  onClick={() => setSelectedAsset(asset)}
+                  className={cn(
+                    "px-2 py-1 rounded text-xs font-bold transition-all",
+                    isSel
+                      ? "bg-ninja-accent/15 text-ninja-accent"
+                      : "text-ninja-muted hover:text-ninja-text hover:bg-ninja-border/30"
+                  )}
+                  style={isSel ? undefined : { color: ASSETS[asset]?.color }}
+                >
                   {asset}
-                </span>
-                {data && (
-                  <>
-                    <span className="text-ninja-text text-xs font-mono">
-                      ${data.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </span>
-                    <span className={cn("text-xs font-mono", up ? "text-ninja-green" : "text-ninja-red")}>
-                      {up ? "+" : ""}{data.changePercent24h.toFixed(2)}%
-                    </span>
-                  </>
-                )}
-              </button>
-            );
-          })}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         <StatsGrid />

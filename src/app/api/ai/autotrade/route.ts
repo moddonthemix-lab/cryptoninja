@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import type { Candle } from "@/types";
+import { ASSETS } from "@/types";
 
 const HL_INFO = "https://api.hyperliquid.xyz/info";
 
@@ -17,7 +18,7 @@ type FTFCResult = "bullish" | "bearish" | "mixed";
 
 // ─── Candle fetching ──────────────────────────────────────────────────────────
 
-async function fetchCandles(coin: string, interval: string, limit: number): Promise<Candle[]> {
+async function fetchCandles(coin: string, interval: string, limit: number, dex: "" | "xyz" = ""): Promise<Candle[]> {
   const endTime = Date.now();
   const msPerBar = INTERVAL_MS[interval] ?? 3_600_000;
   const startTime = endTime - msPerBar * (limit + 2);
@@ -25,7 +26,7 @@ async function fetchCandles(coin: string, interval: string, limit: number): Prom
   const res = await fetch(HL_INFO, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ type: "candleSnapshot", req: { coin, interval, startTime, endTime } }),
+    body: JSON.stringify({ type: "candleSnapshot", req: { coin, interval, startTime, endTime, ...(dex ? { dex } : {}) } }),
     next: { revalidate: 0 },
   });
 
@@ -208,6 +209,11 @@ export async function POST(req: NextRequest) {
   try {
     const { asset, leverage = 3 } = await req.json();
 
+    // Resolve the HL coin name + dex for this ticker (stocks live on the xyz dex)
+    const cfg = ASSETS[asset];
+    const coin = cfg?.hlCoin ?? asset;
+    const dex: "" | "xyz" = cfg?.dex ?? "";
+
     // Fetch all timeframes in parallel
     const [
       weeklyCandles, dailyCandles,
@@ -215,11 +221,11 @@ export async function POST(req: NextRequest) {
       candles5m,
       btcDailyCandles, btcH4Candles,
     ] = await Promise.all([
-      fetchCandles(asset, "1d", 21),   // weekly proxy via daily
-      fetchCandles(asset, "1d", 5),
-      fetchCandles(asset, "4h", 10),
-      fetchCandles(asset, "1h", 24),   // 1H — last 24 hours
-      fetchCandles(asset, "5m", 30),
+      fetchCandles(coin, "1d", 21, dex),   // weekly proxy via daily
+      fetchCandles(coin, "1d", 5, dex),
+      fetchCandles(coin, "4h", 10, dex),
+      fetchCandles(coin, "1h", 24, dex),   // 1H — last 24 hours
+      fetchCandles(coin, "5m", 30, dex),
       fetchCandles("BTC", "1d", 5),
       fetchCandles("BTC", "4h", 10),
     ]);

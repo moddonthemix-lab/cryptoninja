@@ -213,7 +213,7 @@ export function useAutoTrader(asset: Asset) {
           // 1. Set leverage
           const leverageAction = {
             type: "updateLeverage",
-            asset: assetInfo.index,
+            asset: assetInfo.assetId,
             isCross: true,
             leverage: Math.min(autoTradeLeverage, assetInfo.maxLeverage),
           };
@@ -230,7 +230,7 @@ export function useAutoTrader(asset: Asset) {
           const orderAction = {
             type: "order",
             orders: [{
-              a: assetInfo.index,
+              a: assetInfo.assetId,
               b: isBuy,
               p: priceToWire(limitPx, szDec),
               s: sizeToWire(positionUsd / entry, szDec),

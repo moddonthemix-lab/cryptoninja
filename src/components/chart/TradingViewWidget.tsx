@@ -1,41 +1,13 @@
 "use client";
 
 import { useEffect, useRef, memo } from "react";
+import { ASSETS } from "@/types";
 
-// Known crypto symbols with good TradingView feeds. Anything not listed falls
-// back to a Hyperliquid/CRYPTO style symbol so new tickers still chart.
-const TV_SYMBOLS: Record<string, string> = {
-  BTC: "BINANCE:BTCUSDT",
-  ETH: "BINANCE:ETHUSDT",
-  HYPE: "BYBIT:HYPEUSDT",
-  SOL: "BINANCE:SOLUSDT",
-};
-
-// Tokenized stocks on Hyperliquid → their real exchange symbol on TradingView
-const TV_STOCK_SYMBOLS: Record<string, string> = {
-  TSLA: "NASDAQ:TSLA",
-  AAPL: "NASDAQ:AAPL",
-  NVDA: "NASDAQ:NVDA",
-  AMZN: "NASDAQ:AMZN",
-  AMD: "NASDAQ:AMD",
-  META: "NASDAQ:META",
-  GOOGL: "NASDAQ:GOOGL",
-  MSFT: "NASDAQ:MSFT",
-  COIN: "NASDAQ:COIN",
-  ARM: "NASDAQ:ARM",
-  AVGO: "NASDAQ:AVGO",
-  HOOD: "NASDAQ:HOOD",
-  MSTR: "NASDAQ:MSTR",
-  SPY: "AMEX:SPY",
-  QQQ: "NASDAQ:QQQ",
-  GLD: "AMEX:GLD",
-};
-
+// Resolve the TradingView symbol from the asset registry, with a sane fallback.
 function resolveSymbol(asset: string): string {
+  const cfg = ASSETS[asset];
+  if (cfg?.tvSymbol) return cfg.tvSymbol;
   const base = asset.replace(/-?USDC?$/i, "").toUpperCase();
-  if (TV_SYMBOLS[base]) return TV_SYMBOLS[base];
-  if (TV_STOCK_SYMBOLS[base]) return TV_STOCK_SYMBOLS[base];
-  // Fallback: try a generic crypto perp feed
   return `CRYPTO:${base}USD`;
 }
 

@@ -28,12 +28,14 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const allMarketData = await fetchAllMarketData();
 
-    if (!process.env.ANTHROPIC_API_KEY) {
-      // Return market data without AI overview
+    // Only run the (slow, costly) AI overview when explicitly requested.
+    // The dashboard price poll calls this every 30s and just needs prices.
+    const wantOverview = new URL(req.url).searchParams.get("overview") === "1";
+    if (!wantOverview || !process.env.ANTHROPIC_API_KEY) {
       return NextResponse.json({ overview: null, marketData: allMarketData });
     }
 

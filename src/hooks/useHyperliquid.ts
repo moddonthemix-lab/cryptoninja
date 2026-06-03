@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useAccount } from "wagmi";
 import { useStore } from "@/store/useStore";
 import {
-  buildOrderAction, buildSetLeverageAction, buildCancelAction, HL_COINS,
+  buildOrderAction, buildSetLeverageAction, buildCancelAction,
 } from "@/lib/hyperliquid";
 import type { Asset } from "@/types";
 
@@ -25,10 +25,11 @@ export interface HLLivePosition {
 }
 
 interface AssetMeta {
-  index: number;
-  name: string;
-  maxLeverage: number;
+  assetId: number;
   szDecimals: number;
+  maxLeverage: number;
+  dex: "" | "xyz";
+  hlCoin: string;
 }
 
 export function useHyperliquid() {
@@ -92,9 +93,9 @@ export function useHyperliquid() {
 
   // Set leverage (must be done before first order on a new asset)
   const setLeverage = useCallback(async (asset: Asset, leverage: number, isCross = true) => {
-    const meta = assetMeta[HL_COINS[asset]];
+    const meta = assetMeta[asset];
     if (!meta) throw new Error(`Meta not loaded for ${asset}`);
-    return submitAction(buildSetLeverageAction(meta.index, Math.min(leverage, meta.maxLeverage), isCross));
+    return submitAction(buildSetLeverageAction(meta.assetId, Math.min(leverage, meta.maxLeverage), isCross));
   }, [assetMeta, submitAction]);
 
   // Place a market order by size in USD
@@ -110,7 +111,7 @@ export function useHyperliquid() {
     setLoading(true);
     setError(null);
     try {
-      const meta = assetMeta[HL_COINS[asset]];
+      const meta = assetMeta[asset];
       if (!meta) throw new Error(`Meta not loaded for ${asset}`);
 
       const isBuy = direction === "long";
@@ -118,7 +119,7 @@ export function useHyperliquid() {
       const limitPx = isBuy ? currentPrice * 1.01 : currentPrice * 0.99;
       const sz = sizeUsd / currentPrice;
 
-      const action = buildOrderAction(meta.index, isBuy, limitPx, sz, false, "Ioc", meta.szDecimals);
+      const action = buildOrderAction(meta.assetId, isBuy, limitPx, sz, false, "Ioc", meta.szDecimals);
       const result = await submitAction(action);
       await refreshAccount();
       return result;
@@ -142,12 +143,12 @@ export function useHyperliquid() {
     setLoading(true);
     setError(null);
     try {
-      const meta = assetMeta[HL_COINS[asset]];
+      const meta = assetMeta[asset];
       if (!meta) throw new Error(`Meta not loaded for ${asset}`);
 
       const isBuy = direction === "short"; // close short = buy back
       const limitPx = isBuy ? currentPrice * 1.01 : currentPrice * 0.99;
-      const action = buildOrderAction(meta.index, isBuy, limitPx, size, true, "Ioc", meta.szDecimals); // reduceOnly
+      const action = buildOrderAction(meta.assetId, isBuy, limitPx, size, true, "Ioc", meta.szDecimals); // reduceOnly
       const result = await submitAction(action);
       await refreshAccount();
       return result;
@@ -160,9 +161,9 @@ export function useHyperliquid() {
   }, [assetMeta, submitAction, refreshAccount]);
 
   const cancelOrder = useCallback(async (asset: Asset, orderId: number) => {
-    const meta = assetMeta[HL_COINS[asset]];
+    const meta = assetMeta[asset];
     if (!meta) throw new Error(`Meta not loaded for ${asset}`);
-    return submitAction(buildCancelAction(meta.index, orderId));
+    return submitAction(buildCancelAction(meta.assetId, orderId));
   }, [assetMeta, submitAction]);
 
   // Legacy-compatible placeOrder for TradingPanel
@@ -178,10 +179,10 @@ export function useHyperliquid() {
     setLoading(true);
     setError(null);
     try {
-      const meta = assetMeta[HL_COINS[params.asset]];
+      const meta = assetMeta[params.asset];
       if (!meta) throw new Error(`Meta not loaded for ${params.asset}`);
       const action = buildOrderAction(
-        meta.index, params.isBuy, params.price, params.size,
+        meta.assetId, params.isBuy, params.price, params.size,
         params.reduceOnly ?? false, params.tif ?? "Gtc", meta.szDecimals
       );
       const result = await submitAction(action);
