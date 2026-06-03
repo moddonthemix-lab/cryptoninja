@@ -44,16 +44,42 @@ export function AssetPicker() {
   }, [filtered]);
 
   const cfg = ASSETS[selectedAsset];
+  const selData = marketData[selectedAsset];
+  const selUp = (selData?.changePercent24h ?? 0) >= 0;
 
   return (
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-ninja-border bg-ninja-card hover:border-ninja-accent/50 transition-all"
+        className={cn(
+          "flex items-center gap-2.5 pl-2 pr-3 py-1.5 rounded-xl border bg-ninja-card transition-all",
+          open ? "border-ninja-accent" : "border-ninja-border hover:border-ninja-accent/50"
+        )}
       >
-        <span className="font-bold text-sm" style={{ color: cfg?.color }}>{selectedAsset}</span>
-        <span className="text-ninja-muted text-xs hidden sm:block">{cfg?.name}</span>
-        <ChevronDown size={14} className={cn("text-ninja-muted transition-transform", open && "rotate-180")} />
+        {/* Asset icon coin */}
+        <span
+          className="w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0"
+          style={{ backgroundColor: `${cfg?.color}22`, color: cfg?.color }}
+        >
+          {cfg?.icon || selectedAsset[0]}
+        </span>
+        <div className="text-left leading-tight">
+          <div className="flex items-center gap-1.5">
+            <span className="font-bold text-sm text-ninja-text">{selectedAsset}</span>
+            <ChevronDown size={14} className={cn("text-ninja-muted transition-transform", open && "rotate-180")} />
+          </div>
+          <div className="text-ninja-muted text-[10px] hidden sm:block truncate max-w-[120px]">{cfg?.name}</div>
+        </div>
+        {selData && selData.price > 0 && (
+          <div className="text-right leading-tight ml-1 pl-2 border-l border-ninja-border/60">
+            <div className="font-mono font-bold text-xs text-ninja-text">
+              ${selData.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: selData.price < 1 ? 6 : 2 })}
+            </div>
+            <div className={cn("text-[10px] font-mono", selUp ? "text-ninja-green" : "text-ninja-red")}>
+              {selUp ? "+" : ""}{selData.changePercent24h.toFixed(2)}%
+            </div>
+          </div>
+        )}
       </button>
 
       {open && (

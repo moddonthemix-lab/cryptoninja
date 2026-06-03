@@ -11,7 +11,7 @@ import { ASSETS, DEFAULT_WATCHLIST } from "@/types";
 import { cn } from "@/lib/utils";
 
 export function DashboardContent() {
-  const { selectedAsset, setSelectedAsset, marketData, openPositions, aiSignals } = useStore();
+  const { selectedAsset, setSelectedAsset, openPositions, aiSignals } = useStore();
 
   const aiSignal = aiSignals[selectedAsset];
   const activePos = openPositions.find((p) => p.asset === selectedAsset && p.isOpen);
@@ -21,8 +21,6 @@ export function DashboardContent() {
     ? DEFAULT_WATCHLIST
     : [selectedAsset, ...DEFAULT_WATCHLIST];
 
-  const selData = marketData[selectedAsset];
-  const selUp = (selData?.changePercent24h ?? 0) >= 0;
 
   return (
     <div className="space-y-3 animate-fade-in">
@@ -33,20 +31,8 @@ export function DashboardContent() {
         <div className="flex items-center gap-2 flex-wrap">
           <AssetPicker />
 
-          {/* Current selection price headline */}
-          {selData && selData.price > 0 && (
-            <div className="flex items-baseline gap-2 px-2">
-              <span className="font-mono font-bold text-ninja-text text-sm">
-                ${selData.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: selData.price < 1 ? 6 : 2 })}
-              </span>
-              <span className={cn("text-xs font-mono", selUp ? "text-ninja-green" : "text-ninja-red")}>
-                {selUp ? "+" : ""}{selData.changePercent24h.toFixed(2)}%
-              </span>
-            </div>
-          )}
-
           {/* Quick watchlist chips */}
-          <div className="hidden md:flex items-center gap-1">
+          <div className="hidden lg:flex items-center gap-1">
             {quickList.map((asset) => {
               const isSel = selectedAsset === asset;
               return (
