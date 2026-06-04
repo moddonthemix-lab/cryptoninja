@@ -26,6 +26,48 @@ const BG_VARIANTS: { id: BgVariant; label: string }[] = [
   { id: "minimal", label: "Minimal" },
 ];
 
+// Character roster. `art` (optional) points to an anime/Ghibli PNG in
+// /public/characters/*.png — if present it's used instead of the emoji, so you
+// can swap in real artwork later with zero code changes.
+interface CharOption { id: string; label: string; emoji: string; art?: string; }
+const CHARACTERS: CharOption[] = [
+  { id: "none", label: "None", emoji: "" },
+  { id: "ninja-cat", label: "Ninja Cat", emoji: "🐱", art: "/characters/cat.png" },
+  { id: "penguin", label: "Penguin", emoji: "🐧", art: "/characters/penguin.png" },
+  { id: "dog", label: "Shiba", emoji: "🐶", art: "/characters/dog.png" },
+  { id: "bird", label: "Falcon", emoji: "🦅", art: "/characters/bird.png" },
+  { id: "horse", label: "Stallion", emoji: "🐴", art: "/characters/horse.png" },
+  { id: "fox", label: "Fox", emoji: "🦊", art: "/characters/fox.png" },
+  { id: "wolf", label: "Wolf", emoji: "🐺", art: "/characters/wolf.png" },
+  { id: "frog", label: "Frog", emoji: "🐸", art: "/characters/frog.png" },
+  { id: "bear", label: "Bear", emoji: "🐻", art: "/characters/bear.png" },
+  { id: "bull", label: "Bull", emoji: "🐂", art: "/characters/bull.png" },
+  { id: "dragon", label: "Dragon", emoji: "🐲", art: "/characters/dragon.png" },
+];
+
+// Renders the chosen character on the card. Uses artwork if available (and it
+// loads), otherwise a large glowing emoji mascot.
+function Character({ char, accent }: { char: CharOption; accent: string }) {
+  const [artFailed, setArtFailed] = useState(false);
+  if (char.id === "none") return null;
+  const showArt = char.art && !artFailed;
+  return (
+    <div className="absolute right-0 bottom-0 top-0 w-[46%] flex items-end justify-center pointer-events-none overflow-hidden">
+      {/* glow behind the character */}
+      <div className="absolute rounded-full" style={{ width: 220, height: 220, bottom: 30, background: accent, opacity: 0.18, filter: "blur(50px)" }} />
+      {showArt ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={char.art} alt={char.label} onError={() => setArtFailed(true)}
+          className="relative max-h-[95%] object-contain drop-shadow-2xl" />
+      ) : (
+        <span className="relative leading-none" style={{ fontSize: 150, filter: `drop-shadow(0 6px 18px ${accent}66)` }}>
+          {char.emoji}
+        </span>
+      )}
+    </div>
+  );
+}
+
 // Renders a creative backdrop for the given variant + accent color
 function Background({ variant, color, positive }: { variant: BgVariant; color: string; positive: boolean }) {
   if (variant === "minimal") {
@@ -120,6 +162,7 @@ export function ShareCard({ position, onClose }: { position: SharePosition; onCl
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
   const [bg, setBg] = useState<BgVariant>("aurora");
+  const [charId, setCharId] = useState<string>("ninja-cat");
 
   const cfg = ASSETS[position.asset];
   const isLong = position.direction === "long";
@@ -176,6 +219,7 @@ export function ShareCard({ position, onClose }: { position: SharePosition; onCl
           className="relative flex-1 rounded-xl overflow-hidden border border-ninja-border bg-gradient-to-br from-ninja-bg to-[#0d0d16] p-6 min-h-[340px]"
         >
           <Background variant={bg} color={accent} positive={positive} />
+          <Character char={CHARACTERS.find((c) => c.id === charId) ?? CHARACTERS[0]} accent={accent} />
 
           {/* Brand */}
           <div className="relative flex items-center gap-2 mb-6">
@@ -230,6 +274,26 @@ export function ShareCard({ position, onClose }: { position: SharePosition; onCl
             <button onClick={onClose} className="text-ninja-muted hover:text-ninja-text p-1 rounded">
               <X size={16} />
             </button>
+          </div>
+
+          {/* Character picker */}
+          <div>
+            <label className="text-xs text-ninja-muted mb-1.5 block">Character</label>
+            <div className="grid grid-cols-6 gap-1.5">
+              {CHARACTERS.map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => setCharId(c.id)}
+                  title={c.label}
+                  className={cn(
+                    "h-9 rounded-lg border flex items-center justify-center text-lg transition-all",
+                    charId === c.id ? "border-ninja-accent ring-1 ring-ninja-accent bg-ninja-accent/10" : "border-ninja-border hover:border-ninja-accent/50"
+                  )}
+                >
+                  {c.id === "none" ? <span className="text-[9px] text-ninja-muted">off</span> : c.emoji}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Background picker */}
