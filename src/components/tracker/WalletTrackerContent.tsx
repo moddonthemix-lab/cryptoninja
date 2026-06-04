@@ -83,16 +83,23 @@ function WalletCard({ address, label, onRemove, tradable }: { address: string; l
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <span className="font-bold text-sm text-ninja-text truncate">
-              {label || `${address.slice(0, 6)}…${address.slice(-4)}`}
-            </span>
+            {label && <span className="font-bold text-sm text-ninja-text truncate">{label}</span>}
             {isCopying && (
               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-ninja-accent/20 text-ninja-accent flex items-center gap-1">
                 <CheckCircle size={9} /> COPYING
               </span>
             )}
           </div>
-          <span className="text-ninja-muted/60 text-[11px] font-mono">{address.slice(0, 10)}…{address.slice(-6)}</span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-ninja-muted/70 text-[11px] font-mono break-all select-all">{address}</span>
+            <button
+              onClick={() => navigator.clipboard?.writeText(address)}
+              title="Copy address"
+              className="text-ninja-muted hover:text-ninja-accent flex-shrink-0"
+            >
+              <CopyIcon size={11} />
+            </button>
+          </div>
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">
           <button onClick={load} title="Refresh" className="p-1.5 rounded-md text-ninja-muted hover:text-ninja-text hover:bg-ninja-border/40">
