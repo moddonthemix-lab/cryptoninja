@@ -4,6 +4,7 @@ import { useEffect, useRef, useCallback, useState } from "react";
 import { useStore } from "@/store/useStore";
 import { useHyperliquid } from "@/hooks/useHyperliquid";
 import { priceToWire, sizeToWire } from "@/lib/hyperliquid";
+import { ASSETS } from "@/types";
 import type { Asset } from "@/types";
 
 const SCAN_INTERVAL_MS = 5 * 60 * 1000; // 5 min between scans
@@ -16,7 +17,19 @@ export interface AutoTraderStatus {
   currentPnlPct: number | null;
   peakPnlPct: number | null;
   trailActive: boolean;
+  lockedPct: number;        // profit % currently locked by the trailing stop
   log: Array<{ time: string; msg: string; type: "info" | "trade" | "sl" | "tp" | "trail" | "error" }>;
+}
+
+// Ratcheting profit-lock trailing stop:
+//   at +30% profit → lock +10%; then every additional +20% → lock another +5%
+const TRAIL_ARM_PCT = 30;   // start locking once profit reaches this
+const TRAIL_FIRST_LOCK = 10; // first locked level
+const TRAIL_STEP_PCT = 20;  // each further profit step
+const TRAIL_STEP_LOCK = 5;  // lock added per step
+function lockTarget(pnlPct: number): number {
+  if (pnlPct < TRAIL_ARM_PCT) return 0;
+  return TRAIL_FIRST_LOCK + TRAIL_STEP_LOCK * Math.floor((pnlPct - TRAIL_ARM_PCT) / TRAIL_STEP_PCT);
 }
 
 // Per-position trailing stop metadata (lives only in memory)
@@ -26,6 +39,7 @@ const trailMeta: Record<string, {
   trailRetreatPct: number;
   leverage: number;
   direction: "long" | "short";
+  lockedPct: number;        // current ratcheted profit lock
 }> = {};
 
 const MAX_TRADES_PER_DAY = 5;
@@ -48,6 +62,7 @@ export function useAutoTrader(asset: Asset) {
     currentPnlPct: null,
     peakPnlPct: null,
     trailActive: false,
+    lockedPct: 0,
     log: [],
   });
 
@@ -93,6 +108,25 @@ export function useAutoTrader(asset: Asset) {
           .catch(() => { /* position may already be flat */ });
       };
 
+      // Move the live SL trigger up to a new (in-profit) price: cancel the old
+      // stop for this coin, then place a fresh SL trigger at the locked price.
+      const moveLiveStop = async (pos: typeof allPositions[number], newSlPx: number) => {
+        try {
+          const hlNow = hlRef.current;
+          const coin = ASSETS[pos.asset]?.hlCoin ?? pos.asset;
+          const oldStop = (hlNow.openOrders || []).find(
+            (o: any) => o.coin === coin && /stop/i.test(o.orderType || "")
+          );
+          if (oldStop) await hlNow.cancelOrderByCoin(coin, oldStop.oid);
+          await hlNow.setTpSl({
+            asset: pos.asset as Asset,
+            positionIsLong: pos.direction === "long",
+            size: pos.size,
+            stopLoss: newSlPx,
+          });
+        } catch { /* best effort — app-side close still protects the lock */ }
+      };
+
       for (const pos of allPositions) {
         const price = md[pos.asset as Asset]?.price;
         if (!price) continue;
@@ -132,31 +166,37 @@ export function useAutoTrader(asset: Asset) {
         if (!isCurrentAsset) continue;
 
         if (meta) {
-          // Update peak price
+          // Track peak (for display)
           const currentPeakPnl = direction === "long"
             ? (meta.peakPrice - pos.entryPrice) / pos.entryPrice * 100 * meta.leverage
             : (pos.entryPrice - meta.peakPrice) / pos.entryPrice * 100 * meta.leverage;
           if (pnlPct > currentPeakPnl) meta.peakPrice = price;
-
           const peakPnlPct = direction === "long"
             ? (meta.peakPrice - pos.entryPrice) / pos.entryPrice * 100 * meta.leverage
             : (pos.entryPrice - meta.peakPrice) / pos.entryPrice * 100 * meta.leverage;
 
-          const trailActive = peakPnlPct >= meta.trailTriggerPct;
-          setStatus((s) => ({ ...s, state: "in_position", currentPnlPct: pnlPct, peakPnlPct, trailActive }));
+          // ── Ratchet the locked profit level up as profit grows ──
+          const target = lockTarget(pnlPct);
+          if (target > meta.lockedPct) {
+            meta.lockedPct = target;
+            // price that corresponds to the locked profit %
+            const lockPx = direction === "long"
+              ? pos.entryPrice * (1 + target / 100 / pos.leverage)
+              : pos.entryPrice * (1 - target / 100 / pos.leverage);
+            addLog(`Trail: SL → +${target}% profit on ${pos.asset} ($${lockPx.toFixed(2)}) as trade hit +${pnlPct.toFixed(0)}%`, "trail");
+            // Live: move the actual SL trigger on Hyperliquid (server-enforced)
+            if (liveMode) moveLiveStop(pos, lockPx);
+          }
 
-          if (trailActive) {
-            const trailStopPnlPct = peakPnlPct * (1 - meta.trailRetreatPct / 100);
-            if (pnlPct <= trailStopPnlPct && pnlPct > 0) {
-              closeLive(pos, price);
-              closePosition(pos.id, price, "tp");
-              delete trailMeta[pos.id];
-              addLog(
-                `Trail stop on ${pos.asset} @ $${price.toFixed(2)} — locked +${pnlPct.toFixed(1)}% (peak +${peakPnlPct.toFixed(1)}%)`,
-                "trail"
-              );
-              setStatus((s) => ({ ...s, state: "idle", currentPnlPct: null, peakPnlPct: null, trailActive: false }));
-            }
+          setStatus((s) => ({ ...s, state: "in_position", currentPnlPct: pnlPct, peakPnlPct, trailActive: meta.lockedPct > 0, lockedPct: meta.lockedPct }));
+
+          // Close if price retraces back to the locked profit level
+          if (meta.lockedPct > 0 && pnlPct <= meta.lockedPct) {
+            closeLive(pos, price);
+            closePosition(pos.id, price, "tp");
+            delete trailMeta[pos.id];
+            addLog(`Trail stop on ${pos.asset} @ $${price.toFixed(2)} — locked in +${meta.lockedPct}% profit`, "trail");
+            setStatus((s) => ({ ...s, state: "idle", currentPnlPct: null, peakPnlPct: null, trailActive: false, lockedPct: 0 }));
           }
         } else {
           setStatus((s) => ({
@@ -321,7 +361,7 @@ export function useAutoTrader(asset: Asset) {
         isOpen: true, openedAt: new Date().toISOString(),
       });
 
-      trailMeta[posId] = { peakPrice: entry, trailTriggerPct, trailRetreatPct, leverage: autoTradeLeverage, direction };
+      trailMeta[posId] = { peakPrice: entry, trailTriggerPct, trailRetreatPct, leverage: autoTradeLeverage, direction, lockedPct: 0 };
 
       // Count this trade toward the daily cap + start the cooldown
       useStore.getState().recordAutoTrade();

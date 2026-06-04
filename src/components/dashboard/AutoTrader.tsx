@@ -236,10 +236,10 @@ export function AutoTrader() {
               status.trailActive ? "text-yellow-400" : "text-ninja-muted"
             )}>
               <Lock size={10} />
-              {status.trailActive ? (
-                <span>Trail stop active — peak +{status.peakPnlPct.toFixed(1)}%</span>
+              {status.lockedPct > 0 ? (
+                <span>SL locked at <b>+{status.lockedPct}%</b> profit · peak +{status.peakPnlPct.toFixed(0)}%</span>
               ) : (
-                <span>Trail activates at peak (currently +{status.peakPnlPct.toFixed(1)}%)</span>
+                <span>Trail locks +10% once trade hits +30% (peak +{status.peakPnlPct.toFixed(0)}%)</span>
               )}
             </div>
           )}
