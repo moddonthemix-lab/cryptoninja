@@ -51,8 +51,25 @@ export function useCopyTrader() {
       const copiedAssets = new Set(copied.map((p) => p.asset));
       const targetAssets = new Set<string>();
 
-      const available = live ? (hlRef.current.availableBalance || 0) : useStore.getState().paperBalance;
-      const myEquity = live ? (hlRef.current.totalBalance || 0) : useStore.getState().paperBalance;
+      // Read buying power straight from the account endpoint (documented fields)
+      // so we don't depend on the background hook's state being loaded yet.
+      let available: number;
+      let myEquity: number;
+      if (live) {
+        try {
+          const acc = await (await fetch("/api/hl/account")).json();
+          const cms = acc?.state?.crossMarginSummary;
+          const accountValue = parseFloat(cms?.accountValue ?? "0") || 0;
+          const marginUsed = parseFloat(cms?.totalMarginUsed ?? "0") || 0;
+          const wd = parseFloat(acc?.state?.withdrawable ?? "0") || 0;
+          const spot = acc?.spotUsdcBalance || 0;
+          myEquity = Math.max(accountValue, spot);
+          available = Math.max(accountValue - marginUsed, wd, spot);
+        } catch { available = 0; myEquity = 0; }
+      } else {
+        available = myEquity = useStore.getState().paperBalance;
+      }
+      if (live && myEquity <= 0) { log("Waiting for account data… (will retry)", "info"); setStatus({ state: "watching" }); return; }
 
       // ── Open new copies for target positions we don't yet hold ──
       for (const tp of targetPositions) {
