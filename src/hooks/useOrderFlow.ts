@@ -36,10 +36,13 @@ export function useOrderFlow(coin: string, windowSec = 120): OrderFlow {
       return;
     }
 
+    let ping: ReturnType<typeof setInterval> | null = null;
     ws.onopen = () => {
       if (closed || !ws) return;
       ws.send(JSON.stringify({ method: "subscribe", subscription: { type: "trades", coin } }));
       setFlow((f) => ({ ...f, connected: true }));
+      // Keep-alive — HL drops idle sockets after ~60s
+      ping = setInterval(() => { try { ws?.send(JSON.stringify({ method: "ping" })); } catch { /* ignore */ } }, 30_000);
     };
 
     ws.onmessage = (ev) => {
@@ -77,6 +80,7 @@ export function useOrderFlow(coin: string, windowSec = 120): OrderFlow {
     return () => {
       closed = true;
       clearInterval(tick);
+      if (ping) clearInterval(ping);
       try { ws?.close(); } catch { /* ignore */ }
     };
   }, [coin, windowSec]);
