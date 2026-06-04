@@ -52,6 +52,7 @@ interface AppState {
   updateMarketData: (data: Partial<Record<Asset, MarketData>>) => void;
   setPositions: (positions: Position[]) => void;
   openPosition: (position: Position) => void;
+  updatePositionStop: (positionId: string, stopLoss: number) => void;
   closePosition: (positionId: string, exitPrice: number, reason: string) => void;
   setTrades: (trades: Trade[]) => void;
   addTrade: (trade: Trade) => void;
@@ -113,6 +114,12 @@ export const useStore = create<AppState>()(
         set((s) => ({
           openPositions: [...s.openPositions, position],
           paperBalance: s.paperBalance - (position.size * position.entryPrice) / position.leverage,
+        })),
+      updatePositionStop: (positionId, stopLoss) =>
+        set((s) => ({
+          openPositions: s.openPositions.map((p) =>
+            p.id === positionId ? { ...p, stopLoss } : p
+          ),
         })),
       closePosition: (positionId, exitPrice, reason) =>
         set((s) => {

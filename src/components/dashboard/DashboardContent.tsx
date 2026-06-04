@@ -18,24 +18,25 @@ export function DashboardContent() {
   const aiSignal = aiSignals[selectedAsset];
   const activePos = openPositions.find((p) => p.asset === selectedAsset && p.isOpen);
 
-  // Live HL position for the selected asset (entry line in live mode)
+  // Live HL position for the selected asset (entry line in live mode).
+  // Match across coin formats: crypto "BTC", stock dex "xyz:META", or bare "META".
   const hlCoin = ASSETS[selectedAsset]?.hlCoin ?? selectedAsset;
   const livePos = livePositions.find((p) => p.coin === hlCoin || p.coin === selectedAsset);
-  const liveTrig = triggers[hlCoin] ?? triggers[selectedAsset];
+  const liveTrig = triggers[hlCoin] ?? triggers[selectedAsset] ?? triggers[`xyz:${selectedAsset}`];
 
   // Chart lines reflect ONLY an actual open position or the live trade ticket —
   // never a stale AI signal — so they clear the moment a trade closes.
-  // Priority: trade-ticket overlay → live position (entry + triggers) → paper position.
+  // Priority: trade-ticket overlay → live/paper position. SL/TP prefer the live
+  // trigger orders but fall back to the bot's known SL/TP (e.g. stocks whose
+  // trigger-order coin key doesn't line up), so the lines never silently vanish.
   const overlayMatches = chartOverlay && chartOverlay.asset === selectedAsset;
   const chartEntry = overlayMatches ? chartOverlay!.entry ?? undefined
     : livePos ? parseFloat(livePos.entryPx)
     : activePos?.entryPrice;
   const chartSl = overlayMatches ? chartOverlay!.sl ?? undefined
-    : livePos ? liveTrig?.sl
-    : activePos?.stopLoss;
+    : (liveTrig?.sl ?? activePos?.stopLoss);
   const chartTp = overlayMatches ? chartOverlay!.tp ?? undefined
-    : livePos ? liveTrig?.tp
-    : activePos?.takeProfit;
+    : (liveTrig?.tp ?? activePos?.takeProfit);
 
   // Quick-access watchlist: defaults + the current selection if it's not in defaults
   const quickList = DEFAULT_WATCHLIST.includes(selectedAsset)

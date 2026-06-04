@@ -196,9 +196,8 @@ export function useAutoTrader(asset: Asset) {
           continue;
         }
 
-        // ── Trailing stop + status update (selected asset only) ──
-        if (!isCurrentAsset) continue;
-
+        // ── Trailing stop runs for EVERY position; only the status panel is
+        //    scoped to the currently-selected asset. ──
         if (meta) {
           // Track peak (for display)
           const currentPeakPnl = direction === "long"
@@ -217,12 +216,16 @@ export function useAutoTrader(asset: Asset) {
             const lockPx = direction === "long"
               ? pos.entryPrice * (1 + target / 100 / pos.leverage)
               : pos.entryPrice * (1 - target / 100 / pos.leverage);
+            // Update the stored stop so the chart line + persisted SL reflect it
+            useStore.getState().updatePositionStop(pos.id, lockPx);
             addLog(`Trail: SL → +${target}% profit on ${pos.asset} ($${lockPx.toFixed(2)}) as trade hit +${pnlPct.toFixed(0)}%`, "trail");
             // Live: move the actual SL trigger on Hyperliquid (server-enforced)
             if (liveMode) moveLiveStop(pos, lockPx);
           }
 
-          setStatus((s) => ({ ...s, state: "in_position", currentPnlPct: pnlPct, peakPnlPct, trailActive: meta.lockedPct > 0, lockedPct: meta.lockedPct }));
+          if (isCurrentAsset) {
+            setStatus((s) => ({ ...s, state: "in_position", currentPnlPct: pnlPct, peakPnlPct, trailActive: meta.lockedPct > 0, lockedPct: meta.lockedPct }));
+          }
 
           // Close if price retraces back to the locked profit level
           if (meta.lockedPct > 0 && pnlPct <= meta.lockedPct) {
@@ -231,9 +234,11 @@ export function useAutoTrader(asset: Asset) {
             alertExit(pos, price, "TRAIL", pnlPct);
             delete trailMeta[pos.id];
             addLog(`Trail stop on ${pos.asset} @ $${price.toFixed(2)} — locked in +${meta.lockedPct}% profit`, "trail");
-            setStatus((s) => ({ ...s, state: "idle", currentPnlPct: null, peakPnlPct: null, trailActive: false, lockedPct: 0 }));
+            if (isCurrentAsset) {
+              setStatus((s) => ({ ...s, state: "idle", currentPnlPct: null, peakPnlPct: null, trailActive: false, lockedPct: 0 }));
+            }
           }
-        } else {
+        } else if (isCurrentAsset) {
           setStatus((s) => ({
             ...s,
             state: "in_position",
