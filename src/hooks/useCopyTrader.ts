@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useCallback } from "react";
 import { useStore } from "@/store/useStore";
 import { useHyperliquid } from "@/hooks/useHyperliquid";
 import { priceToWire, sizeToWire } from "@/lib/hyperliquid";
@@ -10,54 +10,43 @@ import type { Asset } from "@/types";
 
 const POLL_MS = 30_000; // check the target trader every 30s
 
-export interface CopyTraderStatus {
-  state: "off" | "watching" | "error";
-  lastCheck: string | null;
-  targetEquity: number | null;
-  targetCount: number;
-  copiedCount: number;
-  log: Array<{ time: string; msg: string; type: "info" | "open" | "close" | "error" }>;
-}
-
 const COPY_PREFIX = "copy_";
 const symbolOf = (coin: string): string => coin.replace(/^xyz:/, "");
 
+// Background mirror engine. Mount ONCE (CopyTraderRunner). Reads config + writes
+// status/log to the store so the COPY tab can show live activity.
 export function useCopyTrader() {
-  const { copyTrade, tradingMode, openPositions, openPosition, closePosition, paperBalance, emergencyStop } = useStore();
+  const { copyTrade, copySyncNonce, emergencyStop, openPosition, closePosition } = useStore();
   const hl = useHyperliquid();
   const hlRef = useRef(hl);
   hlRef.current = hl;
   const busyRef = useRef(false);
 
-  const [status, setStatus] = useState<CopyTraderStatus>({
-    state: "off", lastCheck: null, targetEquity: null, targetCount: 0, copiedCount: 0, log: [],
-  });
-
-  const addLog = useCallback((msg: string, type: CopyTraderStatus["log"][0]["type"] = "info") => {
-    setStatus((s) => ({ ...s, log: [{ time: new Date().toLocaleTimeString(), msg, type }, ...s.log].slice(0, 50) }));
+  const log = useCallback((msg: string, type: "info" | "open" | "close" | "error" = "info") => {
+    useStore.getState().addCopyLog({ time: new Date().toLocaleTimeString(), msg, type });
   }, []);
 
   const tick = useCallback(async () => {
     const cfg = useStore.getState().copyTrade;
-    if (!cfg.enabled || emergencyStop) { setStatus((s) => ({ ...s, state: "off" })); return; }
+    const setStatus = useStore.getState().setCopyStatus;
+    if (!cfg.enabled || emergencyStop) { setStatus({ state: "off" }); return; }
     if (!/^0x[0-9a-fA-F]{40}$/.test(cfg.targetAddress.trim())) {
-      setStatus((s) => ({ ...s, state: "error", lastCheck: new Date().toLocaleTimeString() }));
+      setStatus({ state: "error", lastCheck: new Date().toLocaleTimeString() });
       return;
     }
     if (busyRef.current) return;
     busyRef.current = true;
-    setStatus((s) => ({ ...s, state: "watching", lastCheck: new Date().toLocaleTimeString() }));
+    setStatus({ state: "watching", lastCheck: new Date().toLocaleTimeString() });
 
     try {
       const res = await fetch(`/api/hl/trader?address=${cfg.targetAddress.trim()}`);
       const data = await res.json();
-      if (data.error) { addLog(`Target fetch error: ${data.error}`, "error"); setStatus((s) => ({ ...s, state: "error" })); return; }
+      if (data.error) { log(`Target fetch error: ${data.error}`, "error"); setStatus({ state: "error" }); return; }
 
       const targetPositions: Array<any> = data.positions ?? [];
       const targetEquity: number = data.accountValue ?? 0;
       const live = useStore.getState().tradingMode === "live";
 
-      // Our currently-copied positions (tagged by id prefix)
       const copied = useStore.getState().openPositions.filter((p) => p.isOpen && p.id.startsWith(COPY_PREFIX));
       const copiedAssets = new Set(copied.map((p) => p.asset));
       const targetAssets = new Set<string>();
@@ -68,9 +57,9 @@ export function useCopyTrader() {
       // ── Open new copies for target positions we don't yet hold ──
       for (const tp of targetPositions) {
         const sym = symbolOf(tp.coin) as Asset;
-        if (!ASSETS[sym]) continue;                 // not in our tradable registry
+        if (!ASSETS[sym]) continue;
         targetAssets.add(sym);
-        if (copiedAssets.has(sym)) continue;        // already copying this asset (v1: no resize)
+        if (copiedAssets.has(sym)) continue;
         if (tp.direction === "long" && !cfg.copyLongs) continue;
         if (tp.direction === "short" && !cfg.copyShorts) continue;
 
@@ -78,19 +67,13 @@ export function useCopyTrader() {
         const price = useStore.getState().marketData[sym]?.price || tp.entryPx;
         if (!price) continue;
 
-        // Sizing → target margin
         let marginUsd: number;
-        if (cfg.sizingMode === "fixed") {
-          marginUsd = cfg.fixedUsd;
-        } else if (cfg.sizingMode === "multiplier") {
-          marginUsd = (tp.positionValue * cfg.multiplier) / leverage;
-        } else { // proportional: same portfolio weighting as the target
-          const weight = targetEquity > 0 ? tp.positionValue / targetEquity : 0;
-          marginUsd = (weight * myEquity) / leverage;
-        }
+        if (cfg.sizingMode === "fixed") marginUsd = cfg.fixedUsd;
+        else if (cfg.sizingMode === "multiplier") marginUsd = (tp.positionValue * cfg.multiplier) / leverage;
+        else { const weight = targetEquity > 0 ? tp.positionValue / targetEquity : 0; marginUsd = (weight * myEquity) / leverage; }
         marginUsd = Math.min(marginUsd, cfg.maxMarginPerTrade, available);
         const notional = marginUsd * leverage;
-        if (marginUsd <= 0 || notional <= 0) { addLog(`Skip ${sym}: no funds to size`, "info"); continue; }
+        if (marginUsd <= 0 || notional <= 0) { log(`Skip ${sym}: no funds (avail $${available.toFixed(2)})`, "info"); continue; }
 
         const size = notional / price;
         const id = `${COPY_PREFIX}${sym}`;
@@ -117,10 +100,10 @@ export function useCopyTrader() {
             size, leverage, stopLoss: 0, takeProfit: 0, isOpen: true, openedAt: new Date().toISOString(),
           });
           copiedAssets.add(sym);
-          addLog(`Copied ${direction.toUpperCase()} ${sym} @ $${price.toFixed(2)} · $${marginUsd.toFixed(2)} margin ${leverage}x`, "open");
+          log(`Copied ${direction.toUpperCase()} ${sym} @ $${price.toFixed(2)} · $${marginUsd.toFixed(2)} margin ${leverage}x`, "open");
           notify(`👥 <b>COPY OPEN</b> · ${live ? "LIVE" : "PAPER"}\n${direction.toUpperCase()} <b>${sym}</b> ${leverage}x @ $${price.toFixed(4)}\nMargin $${marginUsd.toFixed(2)} · mirroring ${cfg.targetAddress.slice(0, 8)}…`);
         } catch (e: any) {
-          addLog(`Copy ${sym} failed: ${e.message}`, "error");
+          log(`Copy ${sym} failed: ${e.message}`, "error");
         }
       }
 
@@ -133,33 +116,37 @@ export function useCopyTrader() {
             await hlRef.current.closeLivePosition({ asset: pos.asset as Asset, direction: pos.direction as "long" | "short", size: pos.size, currentPrice: price });
           }
           closePosition(pos.id, price, "manual");
-          addLog(`Closed ${pos.asset} — target exited`, "close");
+          log(`Closed ${pos.asset} — target exited`, "close");
           notify(`👥 <b>COPY CLOSE</b> · ${live ? "LIVE" : "PAPER"}\n${pos.asset} closed @ $${price.toFixed(4)} (target exited)`);
         } catch (e: any) {
-          addLog(`Close ${pos.asset} failed: ${e.message}`, "error");
+          log(`Close ${pos.asset} failed: ${e.message}`, "error");
         }
       }
 
-      setStatus((s) => ({
-        ...s, state: "watching", targetEquity,
-        targetCount: targetPositions.length,
-        copiedCount: useStore.getState().openPositions.filter((p) => p.isOpen && p.id.startsWith(COPY_PREFIX)).length,
-      }));
+      const copiedNow = useStore.getState().openPositions.filter((p) => p.isOpen && p.id.startsWith(COPY_PREFIX)).length;
+      setStatus({ state: "watching", targetEquity, targetCount: targetPositions.length, copiedCount: copiedNow });
+      if (targetPositions.length === 0) log("Target has no open positions — waiting", "info");
     } catch (e: any) {
-      addLog(`Tick error: ${e.message}`, "error");
-      setStatus((s) => ({ ...s, state: "error" }));
+      log(`Tick error: ${e.message}`, "error");
+      setStatus({ state: "error" });
     } finally {
       busyRef.current = false;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [emergencyStop, openPosition, closePosition, addLog]);
+  }, [emergencyStop, openPosition, closePosition, log]);
 
+  // Poll loop while enabled
   useEffect(() => {
-    if (!copyTrade.enabled) { setStatus((s) => ({ ...s, state: "off" })); return; }
+    if (!copyTrade.enabled) { useStore.getState().setCopyStatus({ state: "off" }); return; }
+    log(`Watching ${copyTrade.targetAddress.slice(0, 10)}… every ${POLL_MS / 1000}s`, "info");
     tick();
     const id = setInterval(tick, POLL_MS);
     return () => clearInterval(id);
-  }, [copyTrade.enabled, copyTrade.targetAddress, tick]);
+  }, [copyTrade.enabled, copyTrade.targetAddress, tick, log]);
 
-  return status;
+  // Manual "Sync now" trigger
+  useEffect(() => {
+    if (copySyncNonce > 0 && copyTrade.enabled) tick();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [copySyncNonce]);
 }

@@ -49,6 +49,10 @@ interface AppState {
     copyLongs: boolean;
     copyShorts: boolean;
   };
+  // Copy-trade runtime status/log (not persisted) + a nonce to force a sync
+  copyStatus: { state: "off" | "watching" | "error"; lastCheck: string | null; targetEquity: number | null; targetCount: number; copiedCount: number };
+  copyLog: Array<{ time: string; msg: string; type: "info" | "open" | "close" | "error" }>;
+  copySyncNonce: number;
 
   // Risk
   emergencyStop: boolean;
@@ -79,6 +83,9 @@ interface AppState {
   getTradesToday: () => number;
   resetAutoTradeCount: () => void;
   setCopyTrade: (patch: Partial<AppState["copyTrade"]>) => void;
+  setCopyStatus: (patch: Partial<AppState["copyStatus"]>) => void;
+  addCopyLog: (entry: AppState["copyLog"][number]) => void;
+  requestCopySync: () => void;
   triggerEmergencyStop: () => void;
   clearEmergencyStop: () => void;
   setPaperBalance: (balance: number) => void;
@@ -119,6 +126,9 @@ export const useStore = create<AppState>()(
         copyLongs: true,
         copyShorts: true,
       },
+      copyStatus: { state: "off", lastCheck: null, targetEquity: null, targetCount: 0, copiedCount: 0 },
+      copyLog: [],
+      copySyncNonce: 0,
       emergencyStop: false,
       isLoading: false,
 
@@ -210,6 +220,9 @@ export const useStore = create<AppState>()(
         autoTradeLastTs: 0,
       }),
       setCopyTrade: (patch) => set((s) => ({ copyTrade: { ...s.copyTrade, ...patch } })),
+      setCopyStatus: (patch) => set((s) => ({ copyStatus: { ...s.copyStatus, ...patch } })),
+      addCopyLog: (entry) => set((s) => ({ copyLog: [entry, ...s.copyLog].slice(0, 50) })),
+      requestCopySync: () => set((s) => ({ copySyncNonce: s.copySyncNonce + 1 })),
       triggerEmergencyStop: () => set({ emergencyStop: true, autoTradeEnabled: false, activeStrategyId: null }),
       clearEmergencyStop: () => set({ emergencyStop: false }),
       setPaperBalance: (balance) => set({ paperBalance: balance }),

@@ -5,7 +5,7 @@ import { useStore } from "@/store/useStore";
 import { useCopyTrader } from "@/hooks/useCopyTrader";
 import { cn } from "@/lib/utils";
 import { ASSETS } from "@/types";
-import { Users, AlertTriangle, TrendingUp, TrendingDown, ExternalLink } from "lucide-react";
+import { Users, AlertTriangle, TrendingUp, TrendingDown, ExternalLink, RefreshCw, CheckCircle } from "lucide-react";
 
 // Runs the mirror engine in the background (mount once, e.g. in DashboardContent)
 export function CopyTraderRunner() {
@@ -15,8 +15,13 @@ export function CopyTraderRunner() {
 
 interface TargetPos { coin: string; direction: "long" | "short"; size: number; entryPx: number; leverage: number; unrealizedPnl: number; }
 
+const LOG_COLOR: Record<string, string> = {
+  info: "text-ninja-muted", open: "text-ninja-green font-medium",
+  close: "text-ninja-accent font-medium", error: "text-red-400",
+};
+
 export function CopyTrading() {
-  const { copyTrade, setCopyTrade, tradingMode, openPositions } = useStore();
+  const { copyTrade, setCopyTrade, tradingMode, openPositions, copyStatus, copyLog, requestCopySync } = useStore();
   const c = copyTrade;
   const isLive = tradingMode === "live";
 
@@ -27,7 +32,6 @@ export function CopyTrading() {
   const validAddr = /^0x[0-9a-fA-F]{40}$/.test(c.targetAddress.trim());
   const copies = openPositions.filter((p) => p.isOpen && p.id.startsWith("copy_"));
 
-  // Poll the target's positions for the preview while a valid address is set
   useEffect(() => {
     if (!validAddr) { setPreview(null); return; }
     let cancelled = false;
@@ -51,49 +55,68 @@ export function CopyTrading() {
 
   return (
     <div className="bg-ninja-card border border-ninja-border rounded-xl p-4 space-y-3.5">
-      {/* Header + master toggle */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <Users size={15} className={c.enabled ? "text-ninja-accent" : "text-ninja-muted"} />
-          <span className="font-bold text-sm text-ninja-text">Copy Trading</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className={cn("text-[10px] font-bold", c.enabled ? "text-ninja-accent" : "text-ninja-muted")}>
-            {c.enabled ? "ON" : "OFF"}
+      {/* Header */}
+      <div className="flex items-center gap-2">
+        <Users size={15} className={c.enabled ? "text-ninja-accent" : "text-ninja-muted"} />
+        <span className="font-bold text-sm text-ninja-text">Copy Trading</span>
+        {c.enabled && (
+          <span className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full bg-ninja-accent/20 text-ninja-accent">
+            {copyStatus.state === "watching" ? "WATCHING" : copyStatus.state === "error" ? "ERROR" : "ON"}
           </span>
-          <button
-            onClick={() => setCopyTrade({ enabled: !c.enabled })}
-            disabled={!validAddr}
-            title={validAddr ? "" : "Enter a valid wallet address first"}
-            className={cn(
-              "relative w-11 h-6 rounded-full transition-colors flex-shrink-0",
-              c.enabled ? "bg-ninja-accent" : "bg-ninja-border",
-              !validAddr && "opacity-40 cursor-not-allowed"
-            )}
-          >
-            <span className={cn("absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform",
-              c.enabled ? "translate-x-[22px]" : "translate-x-0.5")} />
-          </button>
-        </div>
+        )}
       </div>
 
       <p className="text-ninja-muted/70 text-xs leading-relaxed">
-        Mirror any Hyperliquid trader. Paste their wallet — the bot copies new positions
-        they open (sized by your rules) and closes when they exit. {isLive ? "Live: real orders via your API key." : "Paper mode: simulated."}
+        Mirror any Hyperliquid trader. Paste their wallet, set your sizing, then press
+        <b className="text-ninja-text"> Watch</b>. {isLive ? "Live: real orders via your API key." : "Paper mode: simulated."}
       </p>
 
-      {/* Target wallet */}
+      {/* Target wallet + confirm */}
       <div>
         <label className="label">Target wallet address</label>
-        <input
-          value={c.targetAddress}
-          onChange={(e) => setCopyTrade({ targetAddress: e.target.value })}
-          placeholder="0x…"
-          spellCheck={false}
-          className={cn("input font-mono text-xs", c.targetAddress && !validAddr && "border-red-500/50")}
-        />
+        <div className="flex gap-2">
+          <input
+            value={c.targetAddress}
+            onChange={(e) => setCopyTrade({ targetAddress: e.target.value, enabled: false })}
+            placeholder="0x…"
+            spellCheck={false}
+            disabled={c.enabled}
+            className={cn("input font-mono text-xs flex-1", c.targetAddress && !validAddr && "border-red-500/50", c.enabled && "opacity-60")}
+          />
+          <button
+            onClick={() => setCopyTrade({ enabled: !c.enabled })}
+            disabled={!validAddr}
+            className={cn(
+              "px-3 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-all",
+              !validAddr ? "bg-ninja-border/40 text-ninja-muted/50 cursor-not-allowed"
+                : c.enabled ? "bg-red-500/20 text-red-400 hover:bg-red-500/30"
+                : "bg-ninja-accent text-white hover:bg-ninja-accent-hover"
+            )}
+          >
+            {c.enabled ? "Stop" : "Watch"}
+          </button>
+        </div>
         {c.targetAddress && !validAddr && <p className="text-red-400 text-[10px] mt-1">Not a valid 0x address</p>}
       </div>
+
+      {/* Watching banner */}
+      {c.enabled && (
+        <div className="rounded-lg border border-ninja-accent/30 bg-ninja-accent/5 p-2.5 text-xs space-y-1.5">
+          <div className="flex items-center gap-1.5 text-ninja-accent font-bold">
+            <CheckCircle size={12} /> Watching {c.targetAddress.slice(0, 8)}…{c.targetAddress.slice(-4)}
+          </div>
+          <div className="flex items-center justify-between text-ninja-muted">
+            <span>Last check {copyStatus.lastCheck ?? "—"}</span>
+            <button onClick={requestCopySync} className="flex items-center gap-1 text-ninja-accent hover:underline">
+              <RefreshCw size={10} /> Sync now
+            </button>
+          </div>
+          <div className="flex items-center justify-between text-ninja-muted">
+            <span>{copyStatus.targetCount} target positions</span>
+            <span>{copies.length} copied</span>
+          </div>
+        </div>
+      )}
 
       {/* Sizing mode */}
       <div className="space-y-2">
@@ -122,41 +145,34 @@ export function CopyTrading() {
         </p>
       </div>
 
-      {/* Mode-specific input */}
       {c.sizingMode === "multiplier" && (
         <div>
           <label className="label">Notional multiplier</label>
           <input type="number" step="0.1" value={c.multiplier}
-            onChange={(e) => setCopyTrade({ multiplier: Math.max(0, parseFloat(e.target.value) || 0) })}
-            className="input" />
+            onChange={(e) => setCopyTrade({ multiplier: Math.max(0, parseFloat(e.target.value) || 0) })} className="input" />
         </div>
       )}
       {c.sizingMode === "fixed" && (
         <div>
           <label className="label">Margin per trade (USDC)</label>
           <input type="number" step="1" value={c.fixedUsd}
-            onChange={(e) => setCopyTrade({ fixedUsd: Math.max(0, parseFloat(e.target.value) || 0) })}
-            className="input" />
+            onChange={(e) => setCopyTrade({ fixedUsd: Math.max(0, parseFloat(e.target.value) || 0) })} className="input" />
         </div>
       )}
 
-      {/* Caps */}
       <div className="grid grid-cols-2 gap-2">
         <div>
           <label className="label">Max margin / trade</label>
           <input type="number" step="1" value={c.maxMarginPerTrade}
-            onChange={(e) => setCopyTrade({ maxMarginPerTrade: Math.max(0, parseFloat(e.target.value) || 0) })}
-            className="input" />
+            onChange={(e) => setCopyTrade({ maxMarginPerTrade: Math.max(0, parseFloat(e.target.value) || 0) })} className="input" />
         </div>
         <div>
           <label className="label">Leverage cap</label>
           <input type="number" step="1" value={c.leverageCap}
-            onChange={(e) => setCopyTrade({ leverageCap: Math.max(1, parseFloat(e.target.value) || 1) })}
-            className="input" />
+            onChange={(e) => setCopyTrade({ leverageCap: Math.max(1, parseFloat(e.target.value) || 1) })} className="input" />
         </div>
       </div>
 
-      {/* Long/short toggles */}
       <div className="grid grid-cols-2 gap-2">
         <button onClick={() => setCopyTrade({ copyLongs: !c.copyLongs })}
           className={cn("py-1.5 rounded-md text-xs font-bold border transition-all flex items-center justify-center gap-1.5",
@@ -168,14 +184,6 @@ export function CopyTrading() {
             c.copyShorts ? "bg-red-500/15 text-red-400 border-red-500/40" : "bg-ninja-bg/40 text-ninja-muted border-transparent")}>
           <TrendingDown size={12} /> Copy Shorts
         </button>
-      </div>
-
-      {/* Status */}
-      <div className="flex items-center justify-between text-xs bg-ninja-bg/40 rounded-lg px-2.5 py-2">
-        <span className="text-ninja-muted">
-          {c.enabled ? (loading ? "Checking target…" : "Watching target") : "Idle"}
-        </span>
-        <span className="text-ninja-text font-mono">{copies.length} copied</span>
       </div>
 
       {/* Target preview */}
@@ -214,15 +222,28 @@ export function CopyTrading() {
         </div>
       )}
 
-      {/* Live warning */}
-      {c.enabled && isLive && (
-        <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-2.5 text-xs text-red-300 flex items-start gap-2 leading-relaxed">
-          <AlertTriangle size={12} className="mt-0.5 flex-shrink-0" />
-          Live copy trading places real orders mirroring this wallet. A −23% safety stop applies to each copied position. Disable anytime with the toggle or Emergency Stop.
+      {/* Activity log */}
+      {copyLog.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-xs font-bold text-ninja-muted uppercase tracking-wide">Activity</p>
+          <div className="max-h-28 overflow-y-auto space-y-0.5 font-mono">
+            {copyLog.map((e, i) => (
+              <div key={i} className="flex gap-2 text-xs">
+                <span className="text-ninja-muted/60 flex-shrink-0">{e.time}</span>
+                <span className={LOG_COLOR[e.type] ?? "text-ninja-text"}>{e.msg}</span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
-      {/* Vault note */}
+      {c.enabled && isLive && (
+        <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-2.5 text-xs text-red-300 flex items-start gap-2 leading-relaxed">
+          <AlertTriangle size={12} className="mt-0.5 flex-shrink-0" />
+          Live copy trading places real orders mirroring this wallet. A −23% safety stop applies per copied position. Stop anytime with the button or Emergency Stop.
+        </div>
+      )}
+
       <a href="https://app.hyperliquid.xyz/vaults" target="_blank" rel="noopener noreferrer"
         className="flex items-center gap-1.5 text-[11px] text-ninja-muted hover:text-ninja-accent transition-colors">
         <ExternalLink size={11} /> Prefer native copy trading? Hyperliquid Vaults
