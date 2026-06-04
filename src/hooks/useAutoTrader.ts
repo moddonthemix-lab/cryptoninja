@@ -182,8 +182,8 @@ export function useAutoTrader(asset: Asset) {
           continue; // check remaining positions
         }
 
-        // ── Hard TP: hit the target price ──
-        const tpHit = direction === "long" ? price >= pos.takeProfit : price <= pos.takeProfit;
+        // ── Hard TP: hit the target price (skip if no TP set, e.g. copy trades) ──
+        const tpHit = pos.takeProfit > 0 && (direction === "long" ? price >= pos.takeProfit : price <= pos.takeProfit);
         if (tpHit) {
           closeLive(pos, price);
           closePosition(pos.id, price, "tp");

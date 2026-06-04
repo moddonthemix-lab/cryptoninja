@@ -40,10 +40,6 @@ export function useHyperliquid() {
   const [assetMeta, setAssetMeta] = useState<Record<string, AssetMeta>>({});
   const [spotUsdcBalance, setSpotUsdcBalance] = useState<number>(0);
   const [withdrawable, setWithdrawable] = useState<number>(0);
-  // xyz dex (stocks/commodities) is a separate margin account
-  const [xyzAccountValue, setXyzAccountValue] = useState<number>(0);
-  const [xyzWithdrawable, setXyzWithdrawable] = useState<number>(0);
-  const [xyzMarginUsed, setXyzMarginUsed] = useState<number>(0);
   // Per-coin TP/SL trigger prices parsed from open trigger orders
   const [triggers, setTriggers] = useState<Record<string, { tp?: number; sl?: number }>>({});
   // Full list of resting open orders (limit + trigger)
@@ -74,9 +70,6 @@ export function useHyperliquid() {
       if (typeof accData.spotUsdcBalance === "number") {
         setSpotUsdcBalance(accData.spotUsdcBalance);
       }
-      if (typeof accData.xyzAccountValue === "number") setXyzAccountValue(accData.xyzAccountValue);
-      if (typeof accData.xyzWithdrawable === "number") setXyzWithdrawable(accData.xyzWithdrawable);
-      if (typeof accData.xyzMarginUsed === "number") setXyzMarginUsed(accData.xyzMarginUsed);
 
       // Parse TP/SL trigger orders (frontendOpenOrders) by coin
       const orders: any[] = Array.isArray(accData.orders) ? accData.orders : [];
@@ -272,15 +265,15 @@ export function useHyperliquid() {
     }
   }, [assetMeta, tradingMode, submitAction, refreshAccount]);
 
-  // Total account value spans three USDC pots: main perp equity, the xyz dex
-  // (stocks/commodities) perp equity, and the spot wallet.
+  // Hyperliquid Unified Account: clearinghouseState.accountValue is the full
+  // Portfolio Value (perps + spot + all dexes as unified collateral), and
+  // `withdrawable` is the Available to Trade. Do NOT add spot/xyz separately —
+  // that double-counts under a unified account.
   const perpEquity = account ? parseFloat(account.accountValue) : 0;
-  const totalBalance = perpEquity + xyzAccountValue + spotUsdcBalance;        // total equity
-  // Free collateral not tied up as margin across both perp dexes + spot
-  const availableBalance = withdrawable + xyzWithdrawable + spotUsdcBalance;
-  // Margin currently in use across both perp dexes
-  const totalMarginUsed = (account ? parseFloat(account.totalMarginUsed) || 0 : 0) + xyzMarginUsed;
-  const balanceInSpotOnly = perpEquity === 0 && xyzAccountValue === 0 && spotUsdcBalance > 0;
+  const totalBalance = perpEquity > 0 ? perpEquity : spotUsdcBalance;     // Portfolio Value
+  const availableBalance = account ? withdrawable : spotUsdcBalance;       // Available to Trade
+  const totalMarginUsed = account ? parseFloat(account.totalMarginUsed) || 0 : 0;
+  const balanceInSpotOnly = perpEquity === 0 && spotUsdcBalance > 0;
 
   return {
     account,

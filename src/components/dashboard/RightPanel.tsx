@@ -3,15 +3,17 @@
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { AutoTrader } from "./AutoTrader";
+import { CopyTrading } from "./CopyTrading";
 import { TradingPanel } from "@/components/trading/TradingPanel";
 import { HyperliquidAccount } from "@/components/wallet/HyperliquidAccount";
 import { LiveTradingSetup } from "@/components/wallet/LiveTradingSetup";
 import { useStore } from "@/store/useStore";
 
-type Tab = "BOT" | "TRADE";
+type Tab = "BOT" | "COPY" | "TRADE";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "BOT", label: "BOT" },
+  { id: "COPY", label: "COPY" },
   { id: "TRADE", label: "TRADE" },
 ];
 
@@ -50,6 +52,12 @@ export function RightPanel() {
               </>
             ) : null}
             <AutoTrader />
+          </>
+        )}
+        {activeTab === "COPY" && (
+          <>
+            {tradingMode === "live" ? <HyperliquidAccount /> : null}
+            <CopyTrading />
           </>
         )}
         {activeTab === "TRADE" && <TradingPanel />}

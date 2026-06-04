@@ -7,6 +7,7 @@ import { StatsGrid } from "./StatsGrid";
 import { PositionsTable } from "./PositionsTable";
 import { MarketTicker } from "./MarketTicker";
 import { RightPanel } from "./RightPanel";
+import { CopyTraderRunner } from "./CopyTrading";
 import { AssetPicker } from "./AssetPicker";
 import { ASSETS, DEFAULT_WATCHLIST } from "@/types";
 import { cn } from "@/lib/utils";
@@ -47,6 +48,8 @@ export function DashboardContent() {
   return (
     <div className="space-y-3 animate-fade-in">
       <MarketTicker />
+      <CopyTraderRunner />
+
 
       {/* Picker + quick watchlist + current price + inline stats */}
       <div className="flex items-center justify-between gap-3 flex-wrap">

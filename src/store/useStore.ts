@@ -37,6 +37,19 @@ interface AppState {
   autoTradeDate: string;       // YYYY-MM-DD the count belongs to
   autoTradeLastTs: number;     // ms timestamp of last auto trade (for cooldown)
 
+  // Copy trading — mirror a target wallet's trades via the agent key
+  copyTrade: {
+    enabled: boolean;
+    targetAddress: string;
+    sizingMode: "proportional" | "multiplier" | "fixed";
+    multiplier: number;       // for "multiplier": copy their notional × this
+    fixedUsd: number;         // for "fixed": margin USD per copied trade
+    maxMarginPerTrade: number; // hard cap on margin per copied position
+    leverageCap: number;
+    copyLongs: boolean;
+    copyShorts: boolean;
+  };
+
   // Risk
   emergencyStop: boolean;
 
@@ -65,6 +78,7 @@ interface AppState {
   recordAutoTrade: () => void;
   getTradesToday: () => number;
   resetAutoTradeCount: () => void;
+  setCopyTrade: (patch: Partial<AppState["copyTrade"]>) => void;
   triggerEmergencyStop: () => void;
   clearEmergencyStop: () => void;
   setPaperBalance: (balance: number) => void;
@@ -94,6 +108,17 @@ export const useStore = create<AppState>()(
       autoTradeCount: 0,
       autoTradeDate: "",
       autoTradeLastTs: 0,
+      copyTrade: {
+        enabled: false,
+        targetAddress: "",
+        sizingMode: "proportional",
+        multiplier: 1,
+        fixedUsd: 10,
+        maxMarginPerTrade: 25,
+        leverageCap: 5,
+        copyLongs: true,
+        copyShorts: true,
+      },
       emergencyStop: false,
       isLoading: false,
 
@@ -184,6 +209,7 @@ export const useStore = create<AppState>()(
         autoTradeDate: new Date().toLocaleDateString("en-CA"),
         autoTradeLastTs: 0,
       }),
+      setCopyTrade: (patch) => set((s) => ({ copyTrade: { ...s.copyTrade, ...patch } })),
       triggerEmergencyStop: () => set({ emergencyStop: true, autoTradeEnabled: false, activeStrategyId: null }),
       clearEmergencyStop: () => set({ emergencyStop: false }),
       setPaperBalance: (balance) => set({ paperBalance: balance }),
@@ -201,6 +227,7 @@ export const useStore = create<AppState>()(
         autoTradeCount: state.autoTradeCount,
         autoTradeDate: state.autoTradeDate,
         autoTradeLastTs: state.autoTradeLastTs,
+        copyTrade: state.copyTrade,
         // Persist trading data so refreshes don't wipe history (no DB needed)
         openPositions: state.openPositions,
         closedTrades: state.closedTrades,
