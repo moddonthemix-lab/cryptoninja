@@ -18,6 +18,11 @@ export function HyperliquidAccount() {
   const available = balanceInSpotOnly ? spotUsdcBalance : (account ? withdrawable : null);
   const marginUsed = account ? parseFloat(account.totalMarginUsed) : null;
 
+  // Total open (unrealized) PnL across all live positions
+  const totalUnrealized = livePositions.reduce((sum, p) => sum + parseFloat(p.unrealizedPnl || "0"), 0);
+  const pnlPct = equity && equity > 0 ? (totalUnrealized / equity) * 100 : 0;
+  const hasOpen = livePositions.length > 0;
+
   return (
     <div className="bg-ninja-card border border-ninja-border rounded-xl p-4 space-y-3">
       {/* Header */}
@@ -61,6 +66,33 @@ export function HyperliquidAccount() {
       ) : (
         <div className="text-xs text-ninja-muted text-center py-2">
           {loading ? "Loading..." : "No account data — make sure you have deposited USDC"}
+        </div>
+      )}
+
+      {/* Live open PnL — clearly the LIVE account, not paper */}
+      {equity !== null && (
+        <div className={cn(
+          "rounded-lg px-3 py-2.5 flex items-center justify-between border",
+          hasOpen
+            ? totalUnrealized >= 0 ? "bg-green-500/5 border-green-500/30" : "bg-red-500/5 border-red-500/30"
+            : "bg-ninja-bg/40 border-ninja-border"
+        )}>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/20 text-green-400 font-bold">LIVE</span>
+            <span className="text-xs text-ninja-muted">Open PnL</span>
+          </div>
+          {hasOpen ? (
+            <div className="text-right">
+              <span className={cn("font-mono font-bold text-sm", totalUnrealized >= 0 ? "text-ninja-green" : "text-ninja-red")}>
+                {totalUnrealized >= 0 ? "+" : ""}${Math.abs(totalUnrealized).toFixed(2)}
+              </span>
+              <span className={cn("font-mono text-xs ml-1.5", pnlPct >= 0 ? "text-ninja-green/70" : "text-ninja-red/70")}>
+                ({pnlPct >= 0 ? "+" : ""}{pnlPct.toFixed(2)}%)
+              </span>
+            </div>
+          ) : (
+            <span className="text-xs text-ninja-muted">No open positions</span>
+          )}
         </div>
       )}
 

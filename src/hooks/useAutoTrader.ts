@@ -281,10 +281,23 @@ export function useAutoTrader(asset: Asset) {
         "trade"
       );
 
-      const currentBalance = useStore.getState().paperBalance;
-      const positionUsd = currentBalance * 0.05;
+      // ── Risk sizing: use 30–50% of available funds as margin, scaled by
+      //    confidence (65% → 30%, 100% → 50%) ──
+      const riskPct = 0.30 + Math.min(1, Math.max(0, (confidence - MIN_CONFIDENCE) / (100 - MIN_CONFIDENCE))) * 0.20;
+      const available = tradingMode === "live"
+        ? (hl.totalBalance || 0)
+        : useStore.getState().paperBalance;
+      const marginToUse = available * riskPct;
+      const positionUsd = marginToUse * autoTradeLeverage; // notional
       const size = positionUsd / entry;
       const posId = `auto_${Date.now()}`;
+
+      if (available <= 0 || positionUsd <= 0) {
+        addLog(`No available funds to size a trade (avail $${available.toFixed(2)})`, "error");
+        setStatus((s) => ({ ...s, state: "idle" }));
+        return;
+      }
+      addLog(`Risk: using ${(riskPct * 100).toFixed(0)}% of $${available.toFixed(2)} = $${marginToUse.toFixed(2)} margin → $${positionUsd.toFixed(2)} notional`, "info");
 
       // Live mode: submit real order via agent-key proxy (no wallet needed)
       if (tradingMode === "live") {
@@ -377,7 +390,7 @@ export function useAutoTrader(asset: Asset) {
     } finally {
       scanningRef.current = false;
     }
-  }, [asset, autoTradeLeverage, emergencyStop, tradingMode, openPosition, addLog, hl.setTpSl]);
+  }, [asset, autoTradeLeverage, emergencyStop, tradingMode, openPosition, addLog, hl.setTpSl, hl.totalBalance]);
 
   // ── Scan timer: only runs when bot is enabled ────────────────────────────
   useEffect(() => {
