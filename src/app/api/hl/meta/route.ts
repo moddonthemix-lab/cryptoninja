@@ -78,6 +78,14 @@ export async function GET() {
       }
     }
 
+    // Also expose EVERY main-dex perp keyed by its coin name, so copy trading /
+    // wallet tracking work for any Hyperliquid asset (not just the curated list).
+    main.universe.forEach((m, i) => {
+      if (!result[m.name]) {
+        result[m.name] = { assetId: i, szDecimals: m.szDecimals, maxLeverage: m.maxLeverage, dex: "", hlCoin: m.name };
+      }
+    });
+
     metaCache = { ts: Date.now(), result };
     return NextResponse.json(result);
   } catch (e: any) {

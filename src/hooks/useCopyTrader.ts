@@ -71,11 +71,16 @@ export function useCopyTrader() {
       }
       if (live && myEquity <= 0) { log("Waiting for account data… (will retry)", "info"); setStatus({ state: "watching" }); return; }
 
+      // Meta for ALL Hyperliquid perps (keyed by coin name) — lets us copy any
+      // asset, not just our curated list.
+      const meta = await (await fetch("/api/hl/meta")).json().catch(() => ({}));
+
       // ── Open new copies for target positions we don't yet hold ──
       for (const tp of targetPositions) {
         const sym = symbolOf(tp.coin) as Asset;
-        if (!ASSETS[sym]) continue;
+        const info = meta[sym];
         targetAssets.add(sym);
+        if (!info) { log(`Skip ${sym}: not tradable on Hyperliquid`, "info"); continue; }
         if (copiedAssets.has(sym)) continue;
         // Selective copy: if a filter is set, only copy those specific symbols
         if (cfg.assetFilter?.length && !cfg.assetFilter.includes(sym)) continue;
@@ -83,7 +88,9 @@ export function useCopyTrader() {
         if (tp.direction === "short" && !cfg.copyShorts) continue;
 
         const leverage = Math.max(1, Math.min(tp.leverage || cfg.leverageCap, cfg.leverageCap));
-        const price = useStore.getState().marketData[sym]?.price || tp.entryPx;
+        // Prefer our live ticker; fall back to the target's mark (positionValue/size) then entry
+        const price = useStore.getState().marketData[sym]?.price
+          || (tp.size > 0 ? tp.positionValue / tp.size : 0) || tp.entryPx;
         if (!price) continue;
 
         let marginUsd: number;
@@ -111,11 +118,12 @@ export function useCopyTrader() {
         const id = `${COPY_PREFIX}${sym}`;
         const direction = tp.direction as "long" | "short";
 
+        // Safety stop at −23% margin (server-enforced so it protects even assets
+        // that aren't in our live ticker feed)
+        const slPx = direction === "long" ? price * (1 - 0.23 / leverage) : price * (1 + 0.23 / leverage);
+
         try {
           if (live) {
-            const meta = await (await fetch("/api/hl/meta")).json();
-            const info = meta[sym];
-            if (!info) throw new Error(`meta missing for ${sym}`);
             await fetch("/api/hl/trade", { method: "POST", headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ action: { type: "updateLeverage", asset: info.assetId, isCross: true, leverage: Math.min(leverage, info.maxLeverage) } }) });
             const isBuy = direction === "long";
@@ -132,9 +140,14 @@ export function useCopyTrader() {
           }
           openPosition({
             id, asset: sym, direction, entryPrice: price, currentPrice: price,
-            size, leverage, stopLoss: 0, takeProfit: 0, isOpen: true, openedAt: new Date().toISOString(),
+            size, leverage, stopLoss: slPx, takeProfit: 0, isOpen: true, openedAt: new Date().toISOString(),
           });
           copiedAssets.add(sym);
+          // Attach a server-side SL on Hyperliquid (best effort)
+          if (live) {
+            hlRef.current.setTpSl({ asset: sym, positionIsLong: direction === "long", size, stopLoss: slPx })
+              .catch((e: any) => log(`SL set failed for ${sym}: ${e.message}`, "error"));
+          }
           log(`Copied ${direction.toUpperCase()} ${sym} @ $${price.toFixed(2)} · $${marginUsd.toFixed(2)} margin ${leverage}x`, "open");
           notify(`👥 <b>COPY OPEN</b> · ${live ? "LIVE" : "PAPER"}\n${direction.toUpperCase()} <b>${sym}</b> ${leverage}x @ $${price.toFixed(4)}\nMargin $${marginUsd.toFixed(2)} · mirroring ${cfg.targetAddress.slice(0, 8)}…`);
         } catch (e: any) {

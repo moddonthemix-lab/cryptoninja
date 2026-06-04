@@ -25,7 +25,7 @@ function fmtAge(ms: number | null): string {
   return `${rel} · ${date}`;
 }
 
-function WalletCard({ address, label, onRemove }: { address: string; label: string; onRemove: () => void }) {
+function WalletCard({ address, label, onRemove, tradable }: { address: string; label: string; onRemove: () => void; tradable: Set<string> }) {
   const { copyTrade, setCopyTrade } = useStore();
   const [data, setData] = useState<TraderData | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -155,7 +155,7 @@ function WalletCard({ address, label, onRemove }: { address: string; label: stri
                     isLong ? "border-l-2 border-l-green-500/60" : "border-l-2 border-l-red-500/60")}>
                     <td className="py-1.5 pl-2">
                       <span className="font-bold font-mono" style={{ color: ASSETS[s]?.color }}>{s}</span>
-                      {!ASSETS[s] && <span className="text-yellow-400/60 text-[10px] ml-1">(n/a)</span>}
+                      {!tradable.has(s) && <span className="text-yellow-400/60 text-[10px] ml-1">(n/a)</span>}
                     </td>
                     <td className="py-1.5">
                       <span className={cn("inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-bold",
@@ -170,7 +170,7 @@ function WalletCard({ address, label, onRemove }: { address: string; label: stri
                     </td>
                     <td className="py-1.5 text-right font-mono text-ninja-muted/80 whitespace-nowrap text-[11px]">{fmtAge(p.openedAt)}</td>
                     <td className="py-1.5 pl-2 text-right">
-                      {ASSETS[s] && (
+                      {tradable.has(s) && (
                         <button
                           onClick={() => toggleCopyPos(s)}
                           title={isPosCopied(s) ? "Stop copying this position" : "Copy this position"}
@@ -197,6 +197,14 @@ export function WalletTrackerContent() {
   const { trackedWallets, addTrackedWallet, removeTrackedWallet } = useStore();
   const [addr, setAddr] = useState("");
   const [label, setLabel] = useState("");
+  const [tradable, setTradable] = useState<Set<string>>(new Set());
+
+  // All Hyperliquid-tradable coins (so any perp can be copied, not just curated)
+  useEffect(() => {
+    fetch("/api/hl/meta").then((r) => r.json()).then((m) => {
+      if (m && !m.error) setTradable(new Set(Object.keys(m)));
+    }).catch(() => {});
+  }, []);
 
   const valid = /^0x[0-9a-fA-F]{40}$/.test(addr.trim());
   const full = trackedWallets.length >= 5;
@@ -256,7 +264,7 @@ export function WalletTrackerContent() {
       ) : (
         <div className="space-y-3">
           {trackedWallets.map((w) => (
-            <WalletCard key={w.address} address={w.address} label={w.label} onRemove={() => removeTrackedWallet(w.address)} />
+            <WalletCard key={w.address} address={w.address} label={w.label} onRemove={() => removeTrackedWallet(w.address)} tradable={tradable} />
           ))}
         </div>
       )}
