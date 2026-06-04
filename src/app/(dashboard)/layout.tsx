@@ -3,6 +3,8 @@
 import { useStore } from "@/store/useStore";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { TopBar } from "@/components/layout/TopBar";
+import { CopyTraderRunner } from "@/components/dashboard/CopyTrading";
+import { MarketTicker } from "@/components/dashboard/MarketTicker";
 
 export default function DashboardLayout({
   children,
@@ -13,6 +15,9 @@ export default function DashboardLayout({
 
   return (
     <div className="flex h-screen bg-ninja-bg overflow-hidden">
+      {/* Market data + copy engine run across all pages in the group */}
+      <MarketTicker />
+      <CopyTraderRunner />
       <Sidebar />
       <div className="flex flex-col flex-1 overflow-hidden">
         <TopBar />

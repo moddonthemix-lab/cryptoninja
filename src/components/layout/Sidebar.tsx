@@ -10,11 +10,13 @@ import {
   Zap,
   AlertTriangle,
   PieChart,
+  Eye,
 } from "lucide-react";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/portfolio", label: "Portfolio", icon: PieChart },
+  { href: "/wallet-tracker", label: "Wallet Tracker", icon: Eye },
   { href: "/strategy", label: "Strategies", icon: Zap },
   { href: "/trades", label: "Trade History", icon: History },
 ];

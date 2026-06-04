@@ -5,9 +5,7 @@ import { useHyperliquid } from "@/hooks/useHyperliquid";
 import { LightweightChart } from "@/components/chart/LightweightChart";
 import { StatsGrid } from "./StatsGrid";
 import { PositionsTable } from "./PositionsTable";
-import { MarketTicker } from "./MarketTicker";
 import { RightPanel } from "./RightPanel";
-import { CopyTraderRunner } from "./CopyTrading";
 import { AssetPicker } from "./AssetPicker";
 import { ASSETS, DEFAULT_WATCHLIST } from "@/types";
 import { cn } from "@/lib/utils";
@@ -47,8 +45,6 @@ export function DashboardContent() {
 
   return (
     <div className="space-y-3 animate-fade-in">
-      <MarketTicker />
-      <CopyTraderRunner />
 
 
       {/* Picker + quick watchlist + current price + inline stats */}

@@ -54,6 +54,9 @@ interface AppState {
   copyLog: Array<{ time: string; msg: string; type: "info" | "open" | "close" | "error" }>;
   copySyncNonce: number;
 
+  // Wallet tracker — up to 5 watched wallets
+  trackedWallets: Array<{ address: string; label: string }>;
+
   // Risk
   emergencyStop: boolean;
 
@@ -86,6 +89,8 @@ interface AppState {
   setCopyStatus: (patch: Partial<AppState["copyStatus"]>) => void;
   addCopyLog: (entry: AppState["copyLog"][number]) => void;
   requestCopySync: () => void;
+  addTrackedWallet: (address: string, label?: string) => void;
+  removeTrackedWallet: (address: string) => void;
   triggerEmergencyStop: () => void;
   clearEmergencyStop: () => void;
   setPaperBalance: (balance: number) => void;
@@ -129,6 +134,7 @@ export const useStore = create<AppState>()(
       copyStatus: { state: "off", lastCheck: null, targetEquity: null, targetCount: 0, copiedCount: 0 },
       copyLog: [],
       copySyncNonce: 0,
+      trackedWallets: [],
       emergencyStop: false,
       isLoading: false,
 
@@ -223,6 +229,15 @@ export const useStore = create<AppState>()(
       setCopyStatus: (patch) => set((s) => ({ copyStatus: { ...s.copyStatus, ...patch } })),
       addCopyLog: (entry) => set((s) => ({ copyLog: [entry, ...s.copyLog].slice(0, 50) })),
       requestCopySync: () => set((s) => ({ copySyncNonce: s.copySyncNonce + 1 })),
+      addTrackedWallet: (address, label = "") => set((s) => {
+        const addr = address.trim();
+        if (s.trackedWallets.length >= 5) return {};
+        if (s.trackedWallets.some((w) => w.address.toLowerCase() === addr.toLowerCase())) return {};
+        return { trackedWallets: [...s.trackedWallets, { address: addr, label: label.trim() }] };
+      }),
+      removeTrackedWallet: (address) => set((s) => ({
+        trackedWallets: s.trackedWallets.filter((w) => w.address.toLowerCase() !== address.toLowerCase()),
+      })),
       triggerEmergencyStop: () => set({ emergencyStop: true, autoTradeEnabled: false, activeStrategyId: null }),
       clearEmergencyStop: () => set({ emergencyStop: false }),
       setPaperBalance: (balance) => set({ paperBalance: balance }),
@@ -241,6 +256,7 @@ export const useStore = create<AppState>()(
         autoTradeDate: state.autoTradeDate,
         autoTradeLastTs: state.autoTradeLastTs,
         copyTrade: state.copyTrade,
+        trackedWallets: state.trackedWallets,
         // Persist trading data so refreshes don't wipe history (no DB needed)
         openPositions: state.openPositions,
         closedTrades: state.closedTrades,
