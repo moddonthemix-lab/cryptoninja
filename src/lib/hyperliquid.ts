@@ -133,6 +133,11 @@ export async function getUserState(address: string): Promise<HLAccountState> {
   return infoPost({ type: "clearinghouseState", user: address.toLowerCase() });
 }
 
+// Get user account state on a builder-deployed perp dex (e.g. "xyz" = stocks/commodities)
+export async function getUserStateDex(address: string, dex: string): Promise<HLAccountState> {
+  return infoPost({ type: "clearinghouseState", user: address.toLowerCase(), dex });
+}
+
 // Get user open orders
 export async function getOpenOrders(address: string): Promise<HLOpenOrder[]> {
   return infoPost({ type: "openOrders", user: address.toLowerCase() });

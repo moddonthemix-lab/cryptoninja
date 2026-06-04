@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getUserState, getFrontendOpenOrders } from "@/lib/hyperliquid";
+import { getUserState, getUserStateDex, getFrontendOpenOrders } from "@/lib/hyperliquid";
 import { getIronSession } from "iron-session";
 import { cookies } from "next/headers";
 import { SessionData, sessionOptions } from "@/lib/session";
@@ -31,12 +31,31 @@ async function fetchSpotUsdc(address: string): Promise<number> {
 }
 
 async function loadAccount(address: string) {
-  // state + orders are required; spot is best-effort (handled above)
-  const [state, orders, spotUsdcBalance] = await Promise.all([
+  // state + orders are required; spot + xyz-dex are best-effort
+  const [state, xyzState, orders, spotUsdcBalance] = await Promise.all([
     getUserState(address),
+    getUserStateDex(address, "xyz").catch(() => null),  // stocks/commodities dex
     getFrontendOpenOrders(address).catch(() => []),
     fetchSpotUsdc(address),
   ]);
+
+  // Merge xyz-dex (stocks/commodities) positions so they show alongside crypto.
+  // Tag their coin with the "xyz:" prefix the UI already strips for display.
+  const xyzPositions = (xyzState?.assetPositions ?? []).map((ap: any) => ({
+    ...ap,
+    position: {
+      ...ap.position,
+      coin: String(ap.position?.coin ?? "").startsWith("xyz:")
+        ? ap.position.coin
+        : `xyz:${ap.position?.coin}`,
+    },
+  }));
+  if (xyzPositions.length && state?.assetPositions) {
+    state.assetPositions = [...state.assetPositions, ...xyzPositions];
+  } else if (xyzPositions.length) {
+    (state as any).assetPositions = xyzPositions;
+  }
+
   return { state, orders, spotUsdcBalance };
 }
 
