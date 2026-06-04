@@ -5,6 +5,7 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { TopBar } from "@/components/layout/TopBar";
 import { CopyTraderRunner } from "@/components/dashboard/CopyTrading";
 import { WalletWatcherRunner } from "@/components/layout/NotificationsBell";
+import { FloatingPositions } from "@/components/layout/FloatingPositions";
 import { MarketTicker } from "@/components/dashboard/MarketTicker";
 
 export default function DashboardLayout({
@@ -32,6 +33,8 @@ export default function DashboardLayout({
           {children}
         </main>
       </div>
+      {/* Draggable floating positions monitor — persists across pages */}
+      <FloatingPositions />
     </div>
   );
 }
