@@ -42,6 +42,8 @@ export function useHyperliquid() {
   const [withdrawable, setWithdrawable] = useState<number>(0);
   // Per-coin TP/SL trigger prices parsed from open trigger orders
   const [triggers, setTriggers] = useState<Record<string, { tp?: number; sl?: number }>>({});
+  // Full list of resting open orders (limit + trigger)
+  const [openOrders, setOpenOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -71,6 +73,7 @@ export function useHyperliquid() {
 
       // Parse TP/SL trigger orders (frontendOpenOrders) by coin
       const orders: any[] = Array.isArray(accData.orders) ? accData.orders : [];
+      setOpenOrders(orders);
       const byCoin: Record<string, { tp?: number; sl?: number }> = {};
       for (const o of orders) {
         const px = parseFloat(o.triggerPx ?? o.triggerPrice ?? "0");
@@ -183,6 +186,25 @@ export function useHyperliquid() {
     return submitAction(buildCancelAction(meta.assetId, orderId));
   }, [assetMeta, submitAction]);
 
+  // Cancel by HL coin name (handles "xyz:TSLA" → TSLA registry lookup)
+  const cancelOrderByCoin = useCallback(async (coin: string, orderId: number) => {
+    const ticker = coin.replace(/^xyz:/, "");
+    const meta = assetMeta[ticker];
+    if (!meta) throw new Error(`Meta not loaded for ${coin}`);
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await submitAction(buildCancelAction(meta.assetId, orderId));
+      await refreshAccount();
+      return res;
+    } catch (e: any) {
+      setError(e.message);
+      throw e;
+    } finally {
+      setLoading(false);
+    }
+  }, [assetMeta, submitAction, refreshAccount]);
+
   // Attach / update TP and/or SL trigger orders on a position
   const setTpSl = useCallback(async ({
     asset, positionIsLong, size, takeProfit, stopLoss,
@@ -255,6 +277,8 @@ export function useHyperliquid() {
     spotUsdcBalance,
     withdrawable,
     triggers,
+    openOrders,
+    cancelOrderByCoin,
     totalBalance,
     balanceInSpotOnly,
     loading,

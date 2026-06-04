@@ -9,7 +9,7 @@ import type { Asset } from "@/types";
 import { X, Share2 } from "lucide-react";
 import { ShareCard, type SharePosition } from "./ShareCard";
 
-type Tab = "Positions" | "History";
+type Tab = "Positions" | "Orders" | "History";
 
 // Normalized position shape so paper + live render through one table
 interface DisplayPosition {
@@ -28,7 +28,8 @@ interface DisplayPosition {
 
 export function PositionsTable() {
   const { openPositions, closedTrades, marketData, closePosition, tradingMode } = useStore();
-  const { livePositions, closeLivePosition, setTpSl, triggers } = useHyperliquid();
+  const { livePositions, closeLivePosition, setTpSl, triggers, openOrders, cancelOrderByCoin } = useHyperliquid();
+  const [cancelling, setCancelling] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("Positions");
   const [closing, setClosing] = useState<string | null>(null);
   const [sharePos, setSharePos] = useState<SharePosition | null>(null);
@@ -122,11 +123,20 @@ export function PositionsTable() {
     setTimeout(() => setClosing(null), 400);
   };
 
+  const handleCancel = async (coin: string, oid: number) => {
+    setCancelling(oid);
+    try { await cancelOrderByCoin(coin, oid); } catch { /* surfaced via hook */ }
+    setTimeout(() => setCancelling(null), 400);
+  };
+
+  // Resting (non-trigger) limit orders + trigger orders, for the Orders tab
+  const restingOrders = openOrders.filter((o) => o && o.oid);
+
   return (
     <div className="bg-ninja-card border border-ninja-border rounded-lg">
       {/* Tab header */}
       <div className="flex items-center gap-1 px-3 py-2 border-b border-ninja-border/60">
-        {(["Positions", "History"] as Tab[]).map((tab) => (
+        {(["Positions", "Orders", "History"] as Tab[]).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -138,6 +148,14 @@ export function PositionsTable() {
             )}
           >
             {tab}
+            {tab === "Orders" && restingOrders.length > 0 && (
+              <span className={cn(
+                "ml-1.5 px-1 py-0.5 rounded text-xs",
+                activeTab === tab ? "bg-white/20 text-white" : "bg-ninja-accent/20 text-ninja-accent"
+              )}>
+                {restingOrders.length}
+              </span>
+            )}
             {tab === "Positions" && positions.length > 0 && (
               <span className={cn(
                 "ml-1.5 px-1 py-0.5 rounded text-xs",
@@ -310,6 +328,84 @@ export function PositionsTable() {
                               Close
                             </button>
                           </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Orders tab — resting limit + trigger orders on Hyperliquid */}
+      {activeTab === "Orders" && (
+        <>
+          {restingOrders.length === 0 ? (
+            <div className="px-4 py-5 text-center text-ninja-muted text-xs">
+              {isLive ? "No open orders" : "Open orders show in Live mode"}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-ninja-muted border-b border-ninja-border/60 uppercase tracking-wide">
+                    <th className="text-left px-3 py-2">Asset</th>
+                    <th className="text-left px-3 py-2">Side</th>
+                    <th className="text-left px-3 py-2">Type</th>
+                    <th className="text-right px-3 py-2">Size</th>
+                    <th className="text-right px-3 py-2">Price / Trigger</th>
+                    <th className="px-3 py-2" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {restingOrders.map((o) => {
+                    const ticker = String(o.coin).replace(/^xyz:/, "");
+                    const isBuy = o.side === "B";
+                    const isTrigger = o.isTrigger;
+                    const orderType = o.orderType || (isTrigger ? "Trigger" : "Limit");
+                    const px = isTrigger ? parseFloat(o.triggerPx) : parseFloat(o.limitPx);
+                    const typeColor = /take profit/i.test(orderType) ? "text-ninja-green"
+                      : /stop/i.test(orderType) ? "text-ninja-red"
+                      : "text-ninja-accent";
+                    const isCancelling = cancelling === o.oid;
+                    return (
+                      <tr
+                        key={o.oid}
+                        className={cn(
+                          "border-b border-ninja-border/40 hover:bg-ninja-border/20 transition-opacity",
+                          isBuy ? "border-l-2 border-l-green-500/70" : "border-l-2 border-l-red-500/70",
+                          isCancelling && "opacity-40"
+                        )}
+                      >
+                        <td className="px-3 py-2">
+                          <span className="font-bold font-mono" style={{ color: ASSETS[ticker]?.color }}>{ticker}</span>
+                        </td>
+                        <td className="px-3 py-2">
+                          <span className={cn("px-1.5 py-0.5 rounded font-bold", isBuy ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400")}>
+                            {isBuy ? "BUY" : "SELL"}
+                          </span>
+                        </td>
+                        <td className={cn("px-3 py-2 font-medium", typeColor)}>
+                          {orderType}{o.reduceOnly ? " · RO" : ""}
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono text-ninja-text">{parseFloat(o.sz)}</td>
+                        <td className="px-3 py-2 text-right font-mono text-ninja-text">
+                          ${px.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: px < 1 ? 5 : 2 })}
+                          {isTrigger && o.triggerCondition && (
+                            <span className="text-ninja-muted/50 ml-1 text-[10px]">{o.triggerCondition}</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          <button
+                            onClick={() => handleCancel(o.coin, o.oid)}
+                            disabled={isCancelling}
+                            title="Cancel order"
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded border border-ninja-border text-ninja-muted hover:border-red-500/60 hover:text-red-400 hover:bg-red-500/10 transition-all text-xs font-bold"
+                          >
+                            <X size={10} /> Cancel
+                          </button>
                         </td>
                       </tr>
                     );
