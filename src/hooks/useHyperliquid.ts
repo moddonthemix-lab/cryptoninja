@@ -95,7 +95,7 @@ export function useHyperliquid() {
   // Fetch on mount and every 15s — works with or without wallet connected
   useEffect(() => {
     refreshAccount();
-    const interval = setInterval(refreshAccount, 15_000);
+    const interval = setInterval(refreshAccount, 20_000);
     return () => clearInterval(interval);
   }, [refreshAccount]);
 

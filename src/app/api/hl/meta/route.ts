@@ -28,7 +28,15 @@ export interface AssetMetaEntry {
   hlCoin: string;
 }
 
+// Meta barely changes — cache the composed result and serve stale on error so a
+// transient 429 from Hyperliquid never blanks out the asset metadata.
+const META_TTL_MS = 5 * 60_000;
+let metaCache: { ts: number; result: Record<string, AssetMetaEntry> } | null = null;
+
 export async function GET() {
+  if (metaCache && Date.now() - metaCache.ts < META_TTL_MS) {
+    return NextResponse.json(metaCache.result);
+  }
   try {
     const needXyz = ASSET_LIST.some((a) => ASSETS[a].dex === "xyz");
     const [main, xyz] = await Promise.all([
@@ -70,8 +78,11 @@ export async function GET() {
       }
     }
 
+    metaCache = { ts: Date.now(), result };
     return NextResponse.json(result);
   } catch (e: any) {
+    // Serve last good meta if we have it (survives transient 429s)
+    if (metaCache) return NextResponse.json(metaCache.result);
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
 }

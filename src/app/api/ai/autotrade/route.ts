@@ -22,29 +22,48 @@ type FTFCResult = "bullish" | "bearish" | "mixed";
 
 // ─── Candle fetching ──────────────────────────────────────────────────────────
 
+// Short-lived candle cache so repeated scans (esp. BTC, fetched every scan)
+// don't hammer Hyperliquid and trip the 429 rate limiter.
+const CANDLE_TTL_MS = 45_000;
+const candleCache = new Map<string, { ts: number; candles: Candle[] }>();
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 async function fetchCandles(coin: string, interval: string, limit: number, dex: "" | "xyz" = ""): Promise<Candle[]> {
+  const cacheKey = `${dex}:${coin}:${interval}:${limit}`;
+  const cached = candleCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < CANDLE_TTL_MS) return cached.candles;
+
   const endTime = Date.now();
   const msPerBar = INTERVAL_MS[interval] ?? 3_600_000;
   const startTime = endTime - msPerBar * (limit + 2);
+  const body = JSON.stringify({ type: "candleSnapshot", req: { coin, interval, startTime, endTime, ...(dex ? { dex } : {}) } });
 
-  const res = await fetch(HL_INFO, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ type: "candleSnapshot", req: { coin, interval, startTime, endTime, ...(dex ? { dex } : {}) } }),
-    next: { revalidate: 0 },
-  });
+  // Retry a couple of times with backoff on 429 / transient failures
+  let lastErr = "";
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const res = await fetch(HL_INFO, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+      next: { revalidate: 0 },
+    });
+    if (res.ok) {
+      const data: Array<{ t: number; o: string; h: string; l: string; c: string; v: string }> = await res.json();
+      const candles = data.map((c) => ({
+        time: c.t / 1000,
+        open: parseFloat(c.o), high: parseFloat(c.h),
+        low: parseFloat(c.l), close: parseFloat(c.c), volume: parseFloat(c.v),
+      }));
+      candleCache.set(cacheKey, { ts: Date.now(), candles });
+      return candles;
+    }
+    lastErr = String(res.status);
+    if (res.status === 429) await sleep(400 * (attempt + 1)); else break;
+  }
 
-  if (!res.ok) throw new Error(`Candle fetch failed for ${coin} ${interval}`);
-
-  const data: Array<{ t: number; o: string; h: string; l: string; c: string; v: string }> = await res.json();
-  return data.map((c) => ({
-    time: c.t / 1000,
-    open: parseFloat(c.o),
-    high: parseFloat(c.h),
-    low: parseFloat(c.l),
-    close: parseFloat(c.c),
-    volume: parseFloat(c.v),
-  }));
+  // Serve stale cache if we have it rather than failing the whole scan
+  if (cached) return cached.candles;
+  throw new Error(`Candle fetch failed for ${coin} ${interval} (${lastErr})`);
 }
 
 // ─── TheStrat helpers ─────────────────────────────────────────────────────────
