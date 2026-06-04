@@ -6,15 +6,15 @@ import { useStore } from "@/store/useStore";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
-  LineChart,
   History,
-  Settings,
   Zap,
   AlertTriangle,
+  PieChart,
 } from "lucide-react";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/portfolio", label: "Portfolio", icon: PieChart },
   { href: "/strategy", label: "Strategies", icon: Zap },
   { href: "/trades", label: "Trade History", icon: History },
 ];
