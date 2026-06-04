@@ -11,12 +11,14 @@ import {
   AlertTriangle,
   PieChart,
   Eye,
+  Trophy,
 } from "lucide-react";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/portfolio", label: "Portfolio", icon: PieChart },
   { href: "/wallet-tracker", label: "Wallet Tracker", icon: Eye },
+  { href: "/top-traders", label: "Top Traders", icon: Trophy },
   { href: "/strategy", label: "Strategies", icon: Zap },
   { href: "/trades", label: "Trade History", icon: History },
 ];
