@@ -1,9 +1,10 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useStore } from "@/store/useStore";
 import { useAutoTrader } from "@/hooks/useAutoTrader";
 import { cn } from "@/lib/utils";
-import { Zap, TrendingUp, TrendingDown, AlertTriangle, Activity, Lock } from "lucide-react";
+import { Zap, TrendingUp, TrendingDown, AlertTriangle, Activity, Lock, Send } from "lucide-react";
 
 const STATE_LABEL: Record<string, string> = {
   idle: "Waiting for signal",
@@ -41,6 +42,12 @@ export function AutoTrader() {
   const isLive = tradingMode === "live";
   const tradesToday = getTradesToday();
   const MAX_TRADES = 5;
+
+  // Telegram alert connection status
+  const [tgConfigured, setTgConfigured] = useState<boolean | null>(null);
+  useEffect(() => {
+    fetch("/api/telegram/status").then((r) => r.json()).then((d) => setTgConfigured(!!d.configured)).catch(() => setTgConfigured(false));
+  }, []);
 
   // Leverage risk color (text class + hex for the slider fill)
   const levColor = autoTradeLeverage > 10 ? "text-red-400" : autoTradeLeverage > 5 ? "text-yellow-400" : "text-ninja-green";
@@ -141,6 +148,18 @@ export function AutoTrader() {
             {tradesToday}/{MAX_TRADES}
           </span>
         </div>
+      </div>
+
+      {/* Telegram alerts status */}
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-ninja-muted flex items-center gap-1.5"><Send size={11} /> Telegram alerts</span>
+        {tgConfigured === null ? (
+          <span className="text-ninja-muted/60">…</span>
+        ) : tgConfigured ? (
+          <span className="text-ninja-green font-bold">Connected</span>
+        ) : (
+          <span className="text-ninja-muted/70">Not set up</span>
+        )}
       </div>
 
       {/* Leverage control */}

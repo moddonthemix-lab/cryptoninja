@@ -5,7 +5,17 @@ import { useStore } from "@/store/useStore";
 import { useHyperliquid } from "@/hooks/useHyperliquid";
 import { priceToWire, sizeToWire } from "@/lib/hyperliquid";
 import { ASSETS } from "@/types";
+import { notify } from "@/lib/notify";
 import type { Asset } from "@/types";
+
+// Sum of today's realized PnL from closed trades (for daily alerts)
+function todaysRealized(): number {
+  const today = new Date().toISOString().slice(0, 10);
+  return useStore.getState().closedTrades
+    .filter((t) => (t.closedAt ?? "").slice(0, 10) === today)
+    .reduce((s, t) => s + (t.pnl ?? 0), 0);
+}
+const fmt = (n: number) => `${n >= 0 ? "+" : "-"}$${Math.abs(n).toFixed(2)}`;
 
 const SCAN_INTERVAL_MS = 5 * 60 * 1000; // 5 min between scans
 const PRICE_POLL_MS = 10 * 1000;         // 10 s price check
@@ -127,6 +137,20 @@ export function useAutoTrader(asset: Asset) {
         } catch { /* best effort — app-side close still protects the lock */ }
       };
 
+      // Telegram alert on exit (call AFTER closePosition so daily total is fresh)
+      const alertExit = (pos: typeof allPositions[number], price: number, reason: "TP" | "SL" | "TRAIL", pnlPct: number) => {
+        const margin = (pos.size * pos.entryPrice) / pos.leverage;
+        const pnlUsd = margin * (pnlPct / 100);
+        const daily = todaysRealized();
+        const emoji = reason === "SL" ? "🔴" : "🟢";
+        notify(
+          `${emoji} <b>${reason} EXIT</b> · ${liveMode ? "LIVE" : "PAPER"}\n` +
+          `${pos.direction.toUpperCase()} <b>${pos.asset}</b> closed @ $${price.toFixed(4)}\n` +
+          `Trade PnL: <b>${fmt(pnlUsd)}</b> (${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(1)}%)\n` +
+          `Today's total: <b>${fmt(daily)}</b>`
+        );
+      };
+
       for (const pos of allPositions) {
         const price = md[pos.asset as Asset]?.price;
         if (!price) continue;
@@ -141,6 +165,7 @@ export function useAutoTrader(asset: Asset) {
         if (pnlPct <= -30) {
           closeLive(pos, price);
           closePosition(pos.id, price, "sl");
+          alertExit(pos, price, "SL", pnlPct);
           if (meta) delete trailMeta[pos.id];
           addLog(`SL hit on ${pos.asset} @ $${price.toFixed(2)} (−30% margin)`, "sl");
           if (isCurrentAsset) {
@@ -154,6 +179,7 @@ export function useAutoTrader(asset: Asset) {
         if (tpHit) {
           closeLive(pos, price);
           closePosition(pos.id, price, "tp");
+          alertExit(pos, price, "TP", pnlPct);
           if (meta) delete trailMeta[pos.id];
           addLog(`TP hit on ${pos.asset} @ $${price.toFixed(2)} (+${pnlPct.toFixed(1)}% margin)`, "tp");
           if (isCurrentAsset) {
@@ -194,6 +220,7 @@ export function useAutoTrader(asset: Asset) {
           if (meta.lockedPct > 0 && pnlPct <= meta.lockedPct) {
             closeLive(pos, price);
             closePosition(pos.id, price, "tp");
+            alertExit(pos, price, "TRAIL", pnlPct);
             delete trailMeta[pos.id];
             addLog(`Trail stop on ${pos.asset} @ $${price.toFixed(2)} — locked in +${meta.lockedPct}% profit`, "trail");
             setStatus((s) => ({ ...s, state: "idle", currentPnlPct: null, peakPnlPct: null, trailActive: false, lockedPct: 0 }));
@@ -216,6 +243,31 @@ export function useAutoTrader(asset: Asset) {
     // closePosition and addLog are stable refs; asset used for status routing
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [asset, closePosition, addLog]);
+
+  // ── Noon daily report (once per day, while the app is open) ──────────────
+  useEffect(() => {
+    const check = () => {
+      const now = new Date();
+      if (now.getHours() < 12) return; // only at/after local noon
+      const today = now.toISOString().slice(0, 10);
+      if (localStorage.getItem("cn_daily_report") === today) return;
+      localStorage.setItem("cn_daily_report", today);
+
+      const daily = todaysRealized();
+      const equity = hlRef.current.totalBalance || 0;
+      const openCount = useStore.getState().openPositions.filter((p) => p.isOpen).length;
+      const live = useStore.getState().tradingMode === "live";
+      notify(
+        `📊 <b>Daily Report</b> — ${today}\n` +
+        (live && equity > 0 ? `Account equity: <b>$${equity.toFixed(2)}</b>\n` : "") +
+        `Realized today: <b>${fmt(daily)}</b>\n` +
+        `Open positions: ${openCount}`
+      );
+    };
+    const id = setInterval(check, 60_000);
+    check();
+    return () => clearInterval(id);
+  }, []);
 
   // ── Scanner: ask Claude/TheStrat every 5 min ────────────────────────────
   const runScan = useCallback(async () => {
@@ -384,6 +436,15 @@ export function useAutoTrader(asset: Asset) {
         "trade"
       );
       setStatus((s) => ({ ...s, state: "in_position", lastSignal: reasoning }));
+
+      // Telegram alert — entry
+      const modeTag = tradingMode === "live" ? "🟢 LIVE" : "📄 PAPER";
+      notify(
+        `${direction === "long" ? "🟩" : "🟥"} <b>ENTRY</b> · ${modeTag}\n` +
+        `${direction.toUpperCase()} <b>${asset}</b> ${autoTradeLeverage}x\n` +
+        `Entry: $${entry.toFixed(4)}\nSL: $${sl.toFixed(4)}  TP: $${tp.toFixed(4)}\n` +
+        `Confidence: ${confidence}%\n${reasoning}`
+      );
     } catch (e: any) {
       addLog(`Scan failed: ${e.message}`, "error");
       setStatus((s) => ({ ...s, state: "error" }));
