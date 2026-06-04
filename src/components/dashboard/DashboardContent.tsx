@@ -5,6 +5,7 @@ import { useHyperliquid } from "@/hooks/useHyperliquid";
 import { LightweightChart } from "@/components/chart/LightweightChart";
 import { StatsGrid } from "./StatsGrid";
 import { PositionsTable } from "./PositionsTable";
+import { OrderFlow } from "./OrderFlow";
 import { RightPanel } from "./RightPanel";
 import { AssetPicker } from "./AssetPicker";
 import { ASSETS, DEFAULT_WATCHLIST } from "@/types";
@@ -91,6 +92,9 @@ export function DashboardContent() {
             stopLoss={chartSl}
             takeProfit={chartTp}
           />
+
+          {/* Live order flow — taker buy/sell pressure + fresh longs/shorts */}
+          <OrderFlow />
 
           {/* AI signal bar — compact one-liner */}
           {aiSignal && (
