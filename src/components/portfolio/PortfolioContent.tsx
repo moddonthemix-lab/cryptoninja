@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useStore } from "@/store/useStore";
+import { useHyperliquid } from "@/hooks/useHyperliquid";
 import { cn } from "@/lib/utils";
 import { RefreshCw, TrendingUp, TrendingDown, Wallet, BarChart3, Percent, Trophy, ChevronLeft, ChevronRight } from "lucide-react";
 
@@ -22,6 +23,7 @@ function money(n: number) {
 
 export function PortfolioContent() {
   const { tradingMode } = useStore();
+  const { totalBalance } = useHyperliquid();
   const [data, setData] = useState<PortfolioData | null>(null);
   const [loading, setLoading] = useState(true);
   const [range, setRange] = useState<Range>("30D");
@@ -85,10 +87,24 @@ export function PortfolioContent() {
       </div>
 
       {/* Stat cards */}
-      {view && (
+      {view && (() => {
+        const equity = totalBalance || 0;
+        const basis = equity - view.pnl; // capital before this range's realized gains
+        const pnlPct = basis > 0 ? (view.pnl / basis) * 100 : (equity > 0 ? (view.pnl / equity) * 100 : 0);
+        return (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           <Stat label="Realized PnL" icon={view.pnl >= 0 ? <TrendingUp size={16} className="text-ninja-green" /> : <TrendingDown size={16} className="text-ninja-red" />}
-            value={money(view.pnl)} valueClass={view.pnl >= 0 ? "text-ninja-green" : "text-ninja-red"} />
+            value={
+              <span>
+                {money(view.pnl)}
+                {equity > 0 && (
+                  <span className={cn("text-sm ml-2", view.pnl >= 0 ? "text-ninja-green/70" : "text-ninja-red/70")}>
+                    ({view.pnl >= 0 ? "+" : ""}{pnlPct.toFixed(1)}%)
+                  </span>
+                )}
+              </span>
+            }
+            valueClass={view.pnl >= 0 ? "text-ninja-green" : "text-ninja-red"} />
           <Stat label="Win Rate" icon={<Percent size={16} className="text-ninja-accent" />}
             value={`${view.winRate.toFixed(1)}%`} valueClass="text-ninja-text" />
           <Stat label="Wins / Losses" icon={<Trophy size={16} className="text-yellow-400" />}
@@ -100,7 +116,8 @@ export function PortfolioContent() {
           <Stat label="Closed Trades" icon={<BarChart3 size={16} className="text-ninja-accent" />}
             value={`${view.trades}`} valueClass="text-ninja-text" />
         </div>
-      )}
+        );
+      })()}
 
       {/* Range selector */}
       <div className="flex justify-end">
@@ -118,7 +135,16 @@ export function PortfolioContent() {
       <div className="bg-ninja-card border border-ninja-border rounded-xl p-4">
         <div className="flex items-center justify-between mb-3">
           <span className="font-bold text-sm text-ninja-text">Realized PnL</span>
-          {view && <span className={cn("font-mono font-bold", view.pnl >= 0 ? "text-ninja-green" : "text-ninja-red")}>{money(view.pnl)}</span>}
+          {view && (
+            <span className={cn("font-mono font-bold", view.pnl >= 0 ? "text-ninja-green" : "text-ninja-red")}>
+              {money(view.pnl)}
+              {totalBalance > 0 && (() => {
+                const basis = totalBalance - view.pnl;
+                const pct = basis > 0 ? (view.pnl / basis) * 100 : (view.pnl / totalBalance) * 100;
+                return <span className="text-xs ml-1.5 opacity-70">({view.pnl >= 0 ? "+" : ""}{pct.toFixed(1)}%)</span>;
+              })()}
+            </span>
+          )}
         </div>
         {loading ? (
           <div className="h-64 flex items-center justify-center text-ninja-muted text-sm">Loading…</div>
