@@ -17,8 +17,10 @@ function todaysRealized(): number {
 }
 const fmt = (n: number) => `${n >= 0 ? "+" : "-"}$${Math.abs(n).toFixed(2)}`;
 
-const SCAN_INTERVAL_MS = 5 * 60 * 1000; // 5 min between scans
+const SCAN_INTERVAL_MS = 60 * 1000;      // 1 min between scans
 const PRICE_POLL_MS = 10 * 1000;         // 10 s price check
+
+export interface ConfidenceFactor { label: string; points: number; active: boolean }
 
 export interface AutoTraderStatus {
   state: "idle" | "scanning" | "in_position" | "error";
@@ -28,6 +30,9 @@ export interface AutoTraderStatus {
   peakPnlPct: number | null;
   trailActive: boolean;
   lockedPct: number;        // profit % currently locked by the trailing stop
+  lastConfidence: number | null;
+  lastBreakdown: ConfidenceFactor[] | null;
+  lastBreakdownDir: "long" | "short" | null;
   log: Array<{ time: string; msg: string; type: "info" | "trade" | "sl" | "tp" | "trail" | "error" }>;
 }
 
@@ -73,6 +78,9 @@ export function useAutoTrader(asset: Asset) {
     peakPnlPct: null,
     trailActive: false,
     lockedPct: 0,
+    lastConfidence: null,
+    lastBreakdown: null,
+    lastBreakdownDir: null,
     log: [],
   });
 
@@ -309,6 +317,16 @@ export function useAutoTrader(asset: Asset) {
         addLog(`Scan error: ${data.error}`, "error");
         setStatus((s) => ({ ...s, state: "error", lastSignal: data.error }));
         return;
+      }
+
+      // Capture the confidence breakdown whenever a signal was scored
+      if (data.confidenceBreakdown) {
+        setStatus((s) => ({
+          ...s,
+          lastBreakdown: data.confidenceBreakdown,
+          lastConfidence: data.confidence ?? null,
+          lastBreakdownDir: data.direction ?? null,
+        }));
       }
 
       if (!data.shouldTrade) {

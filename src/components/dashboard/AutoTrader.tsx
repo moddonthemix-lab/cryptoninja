@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useStore } from "@/store/useStore";
 import { useAutoTrader } from "@/hooks/useAutoTrader";
 import { cn } from "@/lib/utils";
-import { Zap, TrendingUp, TrendingDown, AlertTriangle, Activity, Lock, Send } from "lucide-react";
+import { Zap, TrendingUp, TrendingDown, AlertTriangle, Activity, Lock, Send, Gauge } from "lucide-react";
 
 const STATE_LABEL: Record<string, string> = {
   idle: "Waiting for signal",
@@ -162,6 +162,72 @@ export function AutoTrader() {
         )}
       </div>
 
+      {/* Confidence score breakdown of the latest scored signal */}
+      {status.lastBreakdown && (
+        <div className="rounded-lg border border-ninja-border bg-ninja-bg/40 p-2.5 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-ninja-muted flex items-center gap-1.5">
+              <Gauge size={12} /> Signal Score
+              {status.lastBreakdownDir && (
+                <span className={cn(
+                  "ml-1 text-[10px] font-bold",
+                  status.lastBreakdownDir === "long" ? "text-ninja-green" : "text-ninja-red"
+                )}>
+                  {status.lastBreakdownDir.toUpperCase()}
+                </span>
+              )}
+            </span>
+            {status.lastConfidence !== null && (
+              <span className={cn(
+                "font-mono font-bold text-sm tabular-nums",
+                status.lastConfidence >= 65 ? "text-ninja-green" : "text-yellow-400"
+              )}>
+                {status.lastConfidence}%
+              </span>
+            )}
+          </div>
+
+          {/* Confidence bar with the 65% threshold marked */}
+          <div className="relative h-1.5 rounded-full bg-ninja-border overflow-hidden">
+            <div
+              className={cn("h-full rounded-full", (status.lastConfidence ?? 0) >= 65 ? "bg-ninja-green" : "bg-yellow-400")}
+              style={{ width: `${Math.min(100, Math.max(0, status.lastConfidence ?? 0))}%` }}
+            />
+            <div className="absolute top-0 bottom-0 w-px bg-white/50" style={{ left: "65%" }} />
+          </div>
+
+          <div className="space-y-0.5">
+            {status.lastBreakdown.map((f, i) => (
+              <div key={i} className={cn(
+                "flex items-center justify-between text-[11px]",
+                f.active ? "text-ninja-text" : "text-ninja-muted/50"
+              )}>
+                <span className="flex items-center gap-1.5">
+                  <span className={cn(
+                    "w-1.5 h-1.5 rounded-full flex-shrink-0",
+                    !f.active ? "bg-ninja-border"
+                      : f.points > 0 ? "bg-ninja-green"
+                      : f.points < 0 ? "bg-ninja-red" : "bg-ninja-muted"
+                  )} />
+                  {f.label}
+                </span>
+                <span className={cn(
+                  "font-mono tabular-nums",
+                  !f.active ? "text-ninja-muted/40"
+                    : f.points > 0 ? "text-ninja-green"
+                    : f.points < 0 ? "text-ninja-red" : "text-ninja-muted"
+                )}>
+                  {f.points > 0 ? "+" : ""}{f.points}
+                </span>
+              </div>
+            ))}
+          </div>
+          <p className="text-ninja-muted/50 text-[10px] pt-0.5 border-t border-ninja-border">
+            Needs ≥65% to trade · last scored signal
+          </p>
+        </div>
+      )}
+
       {/* Leverage control */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
@@ -284,7 +350,8 @@ export function AutoTrader() {
       {/* How it works blurb (only when off, paper mode) */}
       {!autoTradeEnabled && !isLive && (
         <p className="text-ninja-muted/70 text-xs leading-relaxed">
-          AI scans {selectedAsset} every 5 min using TheStrat FTFC.
+          AI scans {selectedAsset} every minute using TheStrat + Goldbach.
+          Enters on a fully-bodied 5m/15m break of prior structure.
           Hard SL at −30% margin. TP is dynamic (25–100%) based on momentum.
           Trailing stop locks profit once you're ahead.
         </p>

@@ -7,10 +7,14 @@ const HL_INFO = "https://api.hyperliquid.xyz/info";
 
 const INTERVAL_MS: Record<string, number> = {
   "5m": 300_000,
+  "15m": 900_000,
   "1h": 3_600_000,
   "4h": 14_400_000,
   "1d": 86_400_000,
 };
+
+// Assets that don't track BTC closely right now — skip the BTC market filter
+const BTC_UNCORRELATED = new Set(["HYPE", "ONDO", "PENDLE"]);
 
 type BarType = "1" | "2U" | "2D" | "3";
 type TFDirection = "bullish" | "bearish" | "neutral";
@@ -74,12 +78,39 @@ function calcFTFC(weeklyDir: TFDirection, dailyDir: TFDirection): FTFCResult {
   return "mixed";
 }
 
-// Check if 5m price has broken and held above/below a given level
-function checkBreakAndHold(candles5m: Candle[], level: number, direction: "bullish" | "bearish"): boolean {
-  if (candles5m.length < 2) return false;
-  const mostRecentClose = candles5m[candles5m.length - 1].close;
-  if (direction === "bullish") return candles5m.some((c) => c.close > level) && mostRecentClose > level;
-  return candles5m.some((c) => c.close < level) && mostRecentClose < level;
+// A candle's full BODY (both open and close) sits beyond the level
+function bodyBeyond(c: Candle, level: number, direction: "bullish" | "bearish"): boolean {
+  const bodyLow = Math.min(c.open, c.close);
+  const bodyHigh = Math.max(c.open, c.close);
+  return direction === "bullish" ? bodyLow > level : bodyHigh < level;
+}
+
+// Confirm a break of `level` in `direction`:
+//   • a 5m candle must close fully bodied beyond the level AND price must still hold beyond
+//   • a single fresh 5m body is treated as "needs 15m" — we wait for either a 2nd
+//     bodied 5m candle OR a 15m candle to close fully bodied beyond before confirming
+function confirmBreak(
+  candles5m: Candle[],
+  candles15m: Candle[],
+  level: number,
+  direction: "bullish" | "bearish"
+): { confirmed: boolean; needs15m: boolean; via: string } {
+  if (candles5m.length < 2 || level <= 0) return { confirmed: false, needs15m: false, via: "" };
+  const last5 = candles5m[candles5m.length - 1];
+  const held = direction === "bullish" ? last5.close > level : last5.close < level;
+  if (!held) return { confirmed: false, needs15m: false, via: "" };
+
+  const bodied5 = candles5m.slice(-6).filter((c) => bodyBeyond(c, level, direction)).length;
+  const last15 = candles15m[candles15m.length - 1];
+  const held15 = last15 ? (direction === "bullish" ? last15.close > level : last15.close < level) : false;
+  const bodied15 = held15 && candles15m.slice(-3).some((c) => bodyBeyond(c, level, direction));
+
+  // Strong: a 15m candle confirms, or two+ fully-bodied 5m candles held beyond the level
+  if (bodied15) return { confirmed: true, needs15m: false, via: "15m" };
+  if (bodied5 >= 2) return { confirmed: true, needs15m: false, via: `5m×${bodied5}` };
+  // Marginal single fresh 5m body — wait for the 15m confirmation
+  if (bodied5 === 1) return { confirmed: false, needs15m: true, via: "" };
+  return { confirmed: false, needs15m: false, via: "" };
 }
 
 // Prior candle high/low (second-to-last closed candle)
@@ -218,13 +249,14 @@ export async function POST(req: NextRequest) {
     const [
       weeklyCandles, dailyCandles,
       h4Candles, h1Candles,
-      candles5m,
+      candles15m, candles5m,
       btcDailyCandles, btcH4Candles,
     ] = await Promise.all([
       fetchCandles(coin, "1d", 21, dex),   // weekly proxy via daily
       fetchCandles(coin, "1d", 5, dex),
       fetchCandles(coin, "4h", 10, dex),
       fetchCandles(coin, "1h", 24, dex),   // 1H — last 24 hours
+      fetchCandles(coin, "15m", 20, dex),  // 15m — for break confirmation
       fetchCandles(coin, "5m", 30, dex),
       fetchCandles("BTC", "1d", 5),
       fetchCandles("BTC", "4h", 10),
@@ -263,17 +295,29 @@ export async function POST(req: NextRequest) {
     const priorWeekHigh = priorWeekSlice.length > 0 ? Math.max(...priorWeekSlice.map(c => c.high)) : priorDay.high * 1.05;
     const priorWeekLow  = priorWeekSlice.length > 0 ? Math.min(...priorWeekSlice.map(c => c.low))  : priorDay.low  * 0.95;
 
-    // 5-min break-and-hold checked in BOTH directions on each timeframe:
-    // Bullish BnH = 5m breaks ABOVE prior candle high and holds → long confirmation
-    // Bearish BnH = 5m breaks BELOW prior candle low and holds  → short confirmation
+    // Break confirmation checked in BOTH directions on each timeframe.
+    // Confirmation requires a fully-bodied 5m close beyond the prior level that holds;
+    // a single fresh 5m body waits for a 15m candle (or a 2nd 5m body) to confirm.
+    const noConfirm = { confirmed: false, needs15m: false, via: "" };
+    const cDailyBull = confirmBreak(candles5m, candles15m, priorDay.high, "bullish");
+    const cDailyBear = confirmBreak(candles5m, candles15m, priorDay.low,  "bearish");
+    const cH4Bull    = confirmBreak(candles5m, candles15m, priorH4.high,  "bullish");
+    const cH4Bear    = confirmBreak(candles5m, candles15m, priorH4.low,   "bearish");
+    const cH1Bull    = h1Candles.length >= 2 ? confirmBreak(candles5m, candles15m, priorH1.high, "bullish") : noConfirm;
+    const cH1Bear    = h1Candles.length >= 2 ? confirmBreak(candles5m, candles15m, priorH1.low,  "bearish") : noConfirm;
+
     const bh = {
-      dailyBull: checkBreakAndHold(candles5m, priorDay.high, "bullish"),
-      dailyBear: checkBreakAndHold(candles5m, priorDay.low,  "bearish"),
-      h4Bull:    checkBreakAndHold(candles5m, priorH4.high,  "bullish"),
-      h4Bear:    checkBreakAndHold(candles5m, priorH4.low,   "bearish"),
-      h1Bull:    h1Candles.length >= 2 && checkBreakAndHold(candles5m, priorH1.high, "bullish"),
-      h1Bear:    h1Candles.length >= 2 && checkBreakAndHold(candles5m, priorH1.low,  "bearish"),
+      dailyBull: cDailyBull.confirmed, dailyBear: cDailyBear.confirmed,
+      h4Bull:    cH4Bull.confirmed,    h4Bear:    cH4Bear.confirmed,
+      h1Bull:    cH1Bull.confirmed,    h1Bear:    cH1Bear.confirmed,
     };
+
+    // A break that is forming but still waiting on a 15m confirmation
+    const pendingBull = [cDailyBull, cH4Bull, cH1Bull].some((c) => c.needs15m);
+    const pendingBear = [cDailyBear, cH4Bear, cH1Bear].some((c) => c.needs15m);
+    // Whether the confirmed break was validated by a 15m candle (stronger signal)
+    const confirmedVia15m = [cDailyBull, cDailyBear, cH4Bull, cH4Bear, cH1Bull, cH1Bear]
+      .some((c) => c.confirmed && c.via === "15m");
 
     const bullishBHCount = [bh.dailyBull, bh.h4Bull, bh.h1Bull].filter(Boolean).length;
     const bearishBHCount = [bh.dailyBear, bh.h4Bear, bh.h1Bear].filter(Boolean).length;
@@ -283,14 +327,12 @@ export async function POST(req: NextRequest) {
       : bearishBHCount > bullishBHCount ? "bearish"
       : "mixed";
 
-    // ── Direction FOLLOWS the actual 5m break of prior structure ──
-    // Bullish break = 5m took out a prior high (1H/4H/daily) and is holding above.
-    // Bearish break = 5m took out a prior low and is holding below.
-    // Daily breaks count anytime; 1H/4H breaks count mid-day (active sessions).
-    const utcHour = new Date().getUTCHours();
-    const midDay = utcHour >= 8 && utcHour <= 22; // London + NY hours
-    const bullBreak = bh.dailyBull || (midDay && (bh.h4Bull || bh.h1Bull));
-    const bearBreak = bh.dailyBear || (midDay && (bh.h4Bear || bh.h1Bear));
+    // ── Direction FOLLOWS the actual break of prior structure ──
+    // Bullish break = price took out a prior high (1H/4H/daily) and a fully-bodied
+    // 5m (or 15m) candle is holding above. Bearish = mirror below a prior low.
+    // 1H / 4H / daily breaks all count any time of day.
+    const bullBreak = bh.dailyBull || bh.h4Bull || bh.h1Bull;
+    const bearBreak = bh.dailyBear || bh.h4Bear || bh.h1Bear;
 
     // Require a CLEAN one-sided break; choppy two-sided = no trade
     let breakDir: "bullish" | "bearish" | "none" = "none";
@@ -309,8 +351,9 @@ export async function POST(req: NextRequest) {
     const ftfcAgrees = assetFTFC === tradeDir;
     const ftfcConflicts = (assetFTFC === "bullish" && tradeDir === "bearish") || (assetFTFC === "bearish" && tradeDir === "bullish");
     const intradayAgreement = [h1Dir, h4Dir].filter((d) => d === tradeDir).length;
-    const btcAgreesWithAsset = btcFTFC === tradeDir;
-    const btcConflicts = (btcFTFC === "bullish" && tradeDir === "bearish") || (btcFTFC === "bearish" && tradeDir === "bullish");
+    const btcExcluded = BTC_UNCORRELATED.has(asset);
+    const btcAgreesWithAsset = !btcExcluded && btcFTFC === tradeDir;
+    const btcConflicts = !btcExcluded && ((btcFTFC === "bullish" && tradeDir === "bearish") || (btcFTFC === "bearish" && tradeDir === "bullish"));
 
     // ── Goldbach: multi-timeframe dealing ranges and bias ─────────────────
     // Main dealing range uses daily ADR (macro view)
@@ -347,10 +390,34 @@ export async function POST(req: NextRequest) {
     const amdPhase = getAMDPhase(new Date().getUTCHours());
     const inManipulation = amdPhase === "manipulation";
 
+    // ── Confidence score breakdown (rule-based factors, shown in the bot panel) ──
+    const buildBreakdown = () => {
+      const b: Array<{ label: string; points: number; active: boolean }> = [
+        { label: "Base", points: 45, active: true },
+      ];
+      if (ftfcAgrees) b.push({ label: "FTFC agrees with break", points: 20, active: true });
+      else if (ftfcConflicts) b.push({ label: "FTFC conflicts", points: -15, active: true });
+      else b.push({ label: "FTFC mixed", points: 0, active: false });
+      b.push({ label: `Intraday 1H/4H aligned (${intradayAgreement}/2)`, points: intradayAgreement * 8, active: intradayAgreement > 0 });
+      b.push({ label: `Goldbach bias aligned (${gbAgreement}/3)`, points: gbAgreement * 5, active: gbAgreement > 0 });
+      if (btcExcluded) b.push({ label: "BTC filter n/a (uncorrelated)", points: 0, active: false });
+      else if (btcAgreesWithAsset) b.push({ label: "BTC agrees", points: 10, active: true });
+      else if (btcConflicts) b.push({ label: "BTC conflicts", points: -10, active: true });
+      else b.push({ label: "BTC neutral", points: 0, active: false });
+      b.push({ label: "At Goldbach level", points: 15, active: atGBLevel });
+      b.push({ label: "Stop run in trade direction", points: 10, active: stopRun.detected && stopRun.direction === tradeDir });
+      b.push({ label: "15m confirmation", points: 5, active: confirmedVia15m });
+      b.push({ label: "London session", points: 5, active: inManipulation });
+      return b;
+    };
+    const confidenceBreakdown = buildBreakdown();
+
     // FTFC is no longer a gate (folded into confidence). A clean break is all
     // that's required to consider a trade.
     if (!breakAndHoldConfirmed) {
-      const reason = `No clean structural break (bull=${bullBreak}, bear=${bearBreak})`;
+      const reason = (pendingBull || pendingBear)
+        ? `Break forming — waiting on 15m confirmation (bull=${pendingBull}, bear=${pendingBear})`
+        : `No clean structural break (bull=${bullBreak}, bear=${bearBreak})`;
       return NextResponse.json({
         shouldTrade: false,
         reason,
@@ -431,7 +498,7 @@ ${last5min}
 === RISK RULES ===
 SL fixed 30% margin = ±${((0.30 / leverage) * 100).toFixed(2)}% price at ${leverage}x.
 TP: use GB TP target when at a GB level. Otherwise use distance to next TheStrat level.
-Confidence drivers: FTFC agrees with break (+20) / conflicts (-15); intraday + GB aligned; at GB level; stop run; BTC agrees; London session.
+Confidence drivers: FTFC agrees with break (+20) / conflicts (-15); intraday + GB aligned; at GB level; stop run; BTC agrees (n/a for HYPE/ONDO/PENDLE); 15m confirmation; London session.
 `.trim();
 
     // ── Rule-based fallback (no Claude key) ──────────────────────────────
@@ -447,6 +514,7 @@ Confidence drivers: FTFC agrees with break (+20) / conflicts (-15); intraday + G
       if (btcConflicts) confidence -= 10;
       if (atGBLevel) confidence += 15;
       if (stopRun.detected && stopRun.direction === tradeDir) confidence += 10;
+      if (confirmedVia15m) confidence += 5;
       if (inManipulation) confidence += 5;
 
       let tpPct: number;
@@ -480,6 +548,7 @@ Confidence drivers: FTFC agrees with break (+20) / conflicts (-15); intraday + G
         goldbachLevel: nearestGB.name, goldbachLevelPrice: nearestGB.level,
         atGoldbachLevel: atGBLevel, goldbachTp: gbTpLevel, gbBiasDaily, gbBiasH4, gbBiasH1,
         po3Main, amdPhase, stopRunDetected: stopRun.detected,
+        confidenceBreakdown,
       });
     }
 
@@ -569,6 +638,7 @@ Return ONLY this JSON:
       atGoldbachLevel: atGBLevel, goldbachTp: gbTpLevel,
       po3Main, dealingRangeLow: drMain.low, dealingRangeHigh: drMain.high,
       amdPhase, stopRunDetected: stopRun.detected,
+      confidenceBreakdown,
     });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "Unknown error";
