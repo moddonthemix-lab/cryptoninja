@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useCallback, useState } from "react";
 import { useStore } from "@/store/useStore";
+import { useHyperliquid } from "@/hooks/useHyperliquid";
 import { priceToWire, sizeToWire } from "@/lib/hyperliquid";
 import type { Asset } from "@/types";
 
@@ -29,6 +30,7 @@ const trailMeta: Record<string, {
 
 const MAX_TRADES_PER_DAY = 5;
 const TRADE_COOLDOWN_MS = 30 * 60 * 1000; // 30 min between auto trades
+const MIN_CONFIDENCE = 65;                 // only take 65%+ confidence setups
 
 export function useAutoTrader(asset: Asset) {
   const {
@@ -36,6 +38,8 @@ export function useAutoTrader(asset: Asset) {
     openPosition, closePosition, openPositions,
     paperBalance, tradingMode,
   } = useStore();
+
+  const hl = useHyperliquid();
 
   const [status, setStatus] = useState<AutoTraderStatus>({
     state: "idle",
@@ -48,6 +52,9 @@ export function useAutoTrader(asset: Asset) {
   });
 
   const scanningRef = useRef(false);
+  // Keep latest hl methods accessible inside the always-on monitor closure
+  const hlRef = useRef(hl);
+  hlRef.current = hl;
 
   // Reset on asset change so stale error/scan state doesn't carry over
   useEffect(() => {
@@ -75,6 +82,16 @@ export function useAutoTrader(asset: Asset) {
       if (allPositions.length === 0) return;
 
       const md = useStore.getState().marketData;
+      const liveMode = useStore.getState().tradingMode === "live";
+
+      // Close the real HL position (reduce-only) — safe even if HL already
+      // closed it via its own TP/SL trigger.
+      const closeLive = (pos: typeof allPositions[number], price: number) => {
+        if (!liveMode) return;
+        hlRef.current
+          .closeLivePosition({ asset: pos.asset as Asset, direction: pos.direction as "long" | "short", size: pos.size, currentPrice: price })
+          .catch(() => { /* position may already be flat */ });
+      };
 
       for (const pos of allPositions) {
         const price = md[pos.asset as Asset]?.price;
@@ -88,6 +105,7 @@ export function useAutoTrader(asset: Asset) {
 
         // ── Hard SL: -30% of margin ──
         if (pnlPct <= -30) {
+          closeLive(pos, price);
           closePosition(pos.id, price, "sl");
           if (meta) delete trailMeta[pos.id];
           addLog(`SL hit on ${pos.asset} @ $${price.toFixed(2)} (−30% margin)`, "sl");
@@ -100,6 +118,7 @@ export function useAutoTrader(asset: Asset) {
         // ── Hard TP: hit the target price ──
         const tpHit = direction === "long" ? price >= pos.takeProfit : price <= pos.takeProfit;
         if (tpHit) {
+          closeLive(pos, price);
           closePosition(pos.id, price, "tp");
           if (meta) delete trailMeta[pos.id];
           addLog(`TP hit on ${pos.asset} @ $${price.toFixed(2)} (+${pnlPct.toFixed(1)}% margin)`, "tp");
@@ -129,6 +148,7 @@ export function useAutoTrader(asset: Asset) {
           if (trailActive) {
             const trailStopPnlPct = peakPnlPct * (1 - meta.trailRetreatPct / 100);
             if (pnlPct <= trailStopPnlPct && pnlPct > 0) {
+              closeLive(pos, price);
               closePosition(pos.id, price, "tp");
               delete trailMeta[pos.id];
               addLog(
@@ -206,6 +226,13 @@ export function useAutoTrader(asset: Asset) {
         return;
       }
 
+      // Confidence filter — only take high-conviction setups
+      if ((data.confidence ?? 0) < MIN_CONFIDENCE) {
+        addLog(`Skipped: confidence ${data.confidence ?? 0}% < ${MIN_CONFIDENCE}% minimum`, "info");
+        setStatus((s) => ({ ...s, state: "idle", lastSignal: `Low confidence (${data.confidence ?? 0}%)` }));
+        return;
+      }
+
       const { direction, confidence, entry, sl, tp, tpPct, reasoning,
         trailTriggerPct = 20, trailRetreatPct = 35 } = data;
 
@@ -265,6 +292,20 @@ export function useAutoTrader(asset: Asset) {
           const orderData = await orderRes.json();
           if (orderData.error) throw new Error(orderData.error);
           addLog(`Live order submitted to Hyperliquid`, "trade");
+
+          // 3. Attach TP + SL trigger orders on HL (server-enforced, survive app close)
+          try {
+            await hl.setTpSl({
+              asset,
+              positionIsLong: direction === "long",
+              size: positionUsd / entry,
+              takeProfit: tp,
+              stopLoss: sl,
+            });
+            addLog(`TP $${tp.toFixed(2)} + SL $${sl.toFixed(2)} set on Hyperliquid`, "trade");
+          } catch (tpErr: any) {
+            addLog(`Entry filled but TP/SL failed: ${tpErr.message}`, "error");
+          }
         } catch (orderErr: any) {
           addLog(`Live order failed: ${orderErr.message}`, "error");
           setStatus((s) => ({ ...s, state: "error", lastSignal: orderErr.message }));
@@ -296,7 +337,7 @@ export function useAutoTrader(asset: Asset) {
     } finally {
       scanningRef.current = false;
     }
-  }, [asset, autoTradeLeverage, emergencyStop, tradingMode, openPosition, addLog]);
+  }, [asset, autoTradeLeverage, emergencyStop, tradingMode, openPosition, addLog, hl.setTpSl]);
 
   // ── Scan timer: only runs when bot is enabled ────────────────────────────
   useEffect(() => {

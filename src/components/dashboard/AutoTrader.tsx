@@ -32,7 +32,7 @@ export function AutoTrader() {
   const {
     autoTradeEnabled, toggleAutoTrade,
     autoTradeLeverage, setAutoTradeLeverage,
-    selectedAsset, tradingMode, emergencyStop,
+    selectedAsset, tradingMode, setTradingMode, emergencyStop,
     openPositions, paperBalance, getTradesToday,
   } = useStore();
 
@@ -51,31 +51,57 @@ export function AutoTrader() {
       "bg-ninja-card border rounded-xl p-4 space-y-3.5",
       autoTradeEnabled ? "border-ninja-accent/40" : "border-ninja-border"
     )}>
-      {/* Header + toggle */}
+      {/* Header + on/off toggle */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <Zap size={15} className={cn("flex-shrink-0", autoTradeEnabled ? "text-ninja-accent" : "text-ninja-muted")} />
           <span className="font-bold text-sm text-ninja-text">Auto Trader</span>
-          {isLive ? (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/20 text-green-400 font-bold">LIVE</span>
-          ) : (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-ninja-border text-ninja-muted">PAPER</span>
-          )}
         </div>
+        <div className="flex items-center gap-2">
+          <span className={cn("text-[10px] font-bold", autoTradeEnabled ? "text-ninja-accent" : "text-ninja-muted")}>
+            {autoTradeEnabled ? "ON" : "OFF"}
+          </span>
+          <button
+            onClick={toggleAutoTrade}
+            disabled={emergencyStop}
+            title={emergencyStop ? "Emergency stop active" : autoTradeEnabled ? "Turn off" : "Turn on"}
+            className={cn(
+              "relative w-11 h-6 rounded-full transition-colors duration-200 flex-shrink-0",
+              autoTradeEnabled ? "bg-ninja-accent" : "bg-ninja-border",
+              emergencyStop && "opacity-40 cursor-not-allowed"
+            )}
+          >
+            <span className={cn(
+              "absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200",
+              autoTradeEnabled ? "translate-x-[22px]" : "translate-x-0.5"
+            )} />
+          </button>
+        </div>
+      </div>
+
+      {/* Mode: clean PAPER | LIVE segmented switch */}
+      <div className="grid grid-cols-2 gap-1 bg-ninja-bg/50 rounded-lg p-1">
         <button
-          onClick={toggleAutoTrade}
-          disabled={emergencyStop}
-          title={emergencyStop ? "Emergency stop active" : autoTradeEnabled ? "Turn off" : "Turn on"}
+          onClick={() => setTradingMode("paper")}
+          disabled={autoTradeEnabled}
           className={cn(
-            "relative w-11 h-6 rounded-full transition-colors duration-200 flex-shrink-0",
-            autoTradeEnabled ? "bg-ninja-accent" : "bg-ninja-border",
-            emergencyStop && "opacity-40 cursor-not-allowed"
+            "py-1.5 rounded-md text-xs font-bold transition-all",
+            !isLive ? "bg-yellow-500/20 text-yellow-400" : "text-ninja-muted hover:text-ninja-text",
+            autoTradeEnabled && "opacity-50 cursor-not-allowed"
           )}
         >
-          <span className={cn(
-            "absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200",
-            autoTradeEnabled ? "translate-x-[22px]" : "translate-x-0.5"
-          )} />
+          📄 Paper
+        </button>
+        <button
+          onClick={() => setTradingMode("live")}
+          disabled={autoTradeEnabled}
+          className={cn(
+            "py-1.5 rounded-md text-xs font-bold transition-all",
+            isLive ? "bg-green-500/20 text-green-400" : "text-ninja-muted hover:text-ninja-text",
+            autoTradeEnabled && "opacity-50 cursor-not-allowed"
+          )}
+        >
+          ⚡ Live
         </button>
       </div>
 
