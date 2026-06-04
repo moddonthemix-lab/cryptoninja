@@ -5,6 +5,7 @@ import { ASSETS, ASSET_LIST } from "@/types";
 import { cn } from "@/lib/utils";
 import { Bot } from "lucide-react";
 import { useHyperliquid } from "@/hooks/useHyperliquid";
+import { NotificationsBell } from "./NotificationsBell";
 
 export function TopBar() {
   const { marketData, tradingMode, setTradingMode, selectedAsset, setSelectedAsset } = useStore();
@@ -83,6 +84,8 @@ export function TopBar() {
           </span>
         </div>
       )}
+
+      <NotificationsBell />
     </header>
   );
 }

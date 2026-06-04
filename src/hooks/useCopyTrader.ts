@@ -4,8 +4,8 @@ import { useEffect, useRef, useCallback } from "react";
 import { useStore } from "@/store/useStore";
 import { useHyperliquid } from "@/hooks/useHyperliquid";
 import { priceToWire, sizeToWire } from "@/lib/hyperliquid";
-import { ASSETS } from "@/types";
 import { notify } from "@/lib/notify";
+import { trailMeta, TRAIL_ARM_PCT } from "@/lib/trailing";
 import type { Asset } from "@/types";
 
 const POLL_MS = 30_000; // check the target trader every 30s
@@ -118,9 +118,11 @@ export function useCopyTrader() {
         const id = `${COPY_PREFIX}${sym}`;
         const direction = tp.direction as "long" | "short";
 
-        // Safety stop at −23% margin (server-enforced so it protects even assets
-        // that aren't in our live ticker feed)
+        // Bot-style exits: −23% SL + 30% TP, server-enforced on Hyperliquid so
+        // they protect even assets outside our live ticker feed. Trailing (below)
+        // ratchets the stop up to lock profit while the app is open.
         const slPx = direction === "long" ? price * (1 - 0.23 / leverage) : price * (1 + 0.23 / leverage);
+        const tpPx = direction === "long" ? price * (1 + 0.30 / leverage) : price * (1 - 0.30 / leverage);
 
         try {
           if (live) {
@@ -140,15 +142,17 @@ export function useCopyTrader() {
           }
           openPosition({
             id, asset: sym, direction, entryPrice: price, currentPrice: price,
-            size, leverage, stopLoss: slPx, takeProfit: 0, isOpen: true, openedAt: new Date().toISOString(),
+            size, leverage, stopLoss: slPx, takeProfit: tpPx, isOpen: true, openedAt: new Date().toISOString(),
           });
           copiedAssets.add(sym);
-          // Attach a server-side SL on Hyperliquid (best effort)
+          // Register for the shared trailing monitor (locks profit as it rises)
+          trailMeta[id] = { peakPrice: price, trailTriggerPct: TRAIL_ARM_PCT, trailRetreatPct: 35, leverage, direction, lockedPct: 0 };
+          // Attach server-side TP + SL on Hyperliquid (best effort)
           if (live) {
-            hlRef.current.setTpSl({ asset: sym, positionIsLong: direction === "long", size, stopLoss: slPx })
-              .catch((e: any) => log(`SL set failed for ${sym}: ${e.message}`, "error"));
+            hlRef.current.setTpSl({ asset: sym, positionIsLong: direction === "long", size, takeProfit: tpPx, stopLoss: slPx })
+              .catch((e: any) => log(`TP/SL set failed for ${sym}: ${e.message}`, "error"));
           }
-          log(`Copied ${direction.toUpperCase()} ${sym} @ $${price.toFixed(2)} · $${marginUsd.toFixed(2)} margin ${leverage}x`, "open");
+          log(`Copied ${direction.toUpperCase()} ${sym} @ $${price.toFixed(2)} · $${marginUsd.toFixed(2)} margin ${leverage}x · SL −23% TP +30%`, "open");
           notify(`👥 <b>COPY OPEN</b> · ${live ? "LIVE" : "PAPER"}\n${direction.toUpperCase()} <b>${sym}</b> ${leverage}x @ $${price.toFixed(4)}\nMargin $${marginUsd.toFixed(2)} · mirroring ${cfg.targetAddress.slice(0, 8)}…`);
         } catch (e: any) {
           log(`Copy ${sym} failed: ${e.message}`, "error");

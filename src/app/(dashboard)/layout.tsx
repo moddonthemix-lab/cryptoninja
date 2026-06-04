@@ -4,6 +4,7 @@ import { useStore } from "@/store/useStore";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { TopBar } from "@/components/layout/TopBar";
 import { CopyTraderRunner } from "@/components/dashboard/CopyTrading";
+import { WalletWatcherRunner } from "@/components/layout/NotificationsBell";
 import { MarketTicker } from "@/components/dashboard/MarketTicker";
 
 export default function DashboardLayout({
@@ -15,9 +16,10 @@ export default function DashboardLayout({
 
   return (
     <div className="flex h-screen bg-ninja-bg overflow-hidden">
-      {/* Market data + copy engine run across all pages in the group */}
+      {/* Market data, copy engine + wallet watcher run across all pages */}
       <MarketTicker />
       <CopyTraderRunner />
+      <WalletWatcherRunner />
       <Sidebar />
       <div className="flex flex-col flex-1 overflow-hidden">
         <TopBar />

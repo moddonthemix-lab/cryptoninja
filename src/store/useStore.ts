@@ -57,6 +57,12 @@ interface AppState {
 
   // Wallet tracker — up to 5 watched wallets
   trackedWallets: Array<{ address: string; label: string }>;
+  // In-app notifications (tracked-wallet position open/close alerts)
+  notifications: Array<{
+    id: string; kind: "open" | "close"; address: string; label: string;
+    coin: string; sym: string; direction: "long" | "short"; leverage: number;
+    entryPx: number; positionValue: number; time: number; tradable: boolean;
+  }>;
 
   // Risk
   emergencyStop: boolean;
@@ -92,6 +98,9 @@ interface AppState {
   requestCopySync: () => void;
   addTrackedWallet: (address: string, label?: string) => void;
   removeTrackedWallet: (address: string) => void;
+  addNotification: (n: AppState["notifications"][number]) => void;
+  dismissNotification: (id: string) => void;
+  clearNotifications: () => void;
   triggerEmergencyStop: () => void;
   clearEmergencyStop: () => void;
   setPaperBalance: (balance: number) => void;
@@ -137,6 +146,7 @@ export const useStore = create<AppState>()(
       copyLog: [],
       copySyncNonce: 0,
       trackedWallets: [],
+      notifications: [],
       emergencyStop: false,
       isLoading: false,
 
@@ -240,6 +250,9 @@ export const useStore = create<AppState>()(
       removeTrackedWallet: (address) => set((s) => ({
         trackedWallets: s.trackedWallets.filter((w) => w.address.toLowerCase() !== address.toLowerCase()),
       })),
+      addNotification: (n) => set((s) => ({ notifications: [n, ...s.notifications].slice(0, 40) })),
+      dismissNotification: (id) => set((s) => ({ notifications: s.notifications.filter((n) => n.id !== id) })),
+      clearNotifications: () => set({ notifications: [] }),
       triggerEmergencyStop: () => set({ emergencyStop: true, autoTradeEnabled: false, activeStrategyId: null }),
       clearEmergencyStop: () => set({ emergencyStop: false }),
       setPaperBalance: (balance) => set({ paperBalance: balance }),

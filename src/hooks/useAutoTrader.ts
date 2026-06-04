@@ -6,6 +6,7 @@ import { useHyperliquid } from "@/hooks/useHyperliquid";
 import { priceToWire, sizeToWire } from "@/lib/hyperliquid";
 import { ASSETS } from "@/types";
 import { notify } from "@/lib/notify";
+import { lockTarget, trailMeta } from "@/lib/trailing";
 import type { Asset } from "@/types";
 
 // Sum of today's realized PnL from closed trades (for daily alerts)
@@ -36,26 +37,6 @@ export interface AutoTraderStatus {
   log: Array<{ time: string; msg: string; type: "info" | "trade" | "sl" | "tp" | "trail" | "error" }>;
 }
 
-// Ratcheting profit-lock trailing stop:
-//   at +15% profit → lock +5%; then every additional +20% → lock another +7%
-const TRAIL_ARM_PCT = 15;   // start locking once profit reaches this
-const TRAIL_FIRST_LOCK = 5; // first locked level
-const TRAIL_STEP_PCT = 20;  // each further profit step
-const TRAIL_STEP_LOCK = 7;  // lock added per step
-function lockTarget(pnlPct: number): number {
-  if (pnlPct < TRAIL_ARM_PCT) return 0;
-  return TRAIL_FIRST_LOCK + TRAIL_STEP_LOCK * Math.floor((pnlPct - TRAIL_ARM_PCT) / TRAIL_STEP_PCT);
-}
-
-// Per-position trailing stop metadata (lives only in memory)
-const trailMeta: Record<string, {
-  peakPrice: number;
-  trailTriggerPct: number;
-  trailRetreatPct: number;
-  leverage: number;
-  direction: "long" | "short";
-  lockedPct: number;        // current ratcheted profit lock
-}> = {};
 
 const MAX_TRADES_PER_DAY = 5;
 const TRADE_COOLDOWN_MS = 30 * 60 * 1000; // 30 min between auto trades
