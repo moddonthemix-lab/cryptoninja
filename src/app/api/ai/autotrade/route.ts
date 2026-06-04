@@ -251,19 +251,8 @@ export async function POST(req: NextRequest) {
     // FTFC: weekly + daily gate (core TheStrat requirement)
     const assetFTFC = calcFTFC(weeklyDir, dailyDir);
 
-    // Count how many intraday TFs agree with FTFC direction (1H, 4H)
-    const intradayTFs = [h1Dir, h4Dir];
-    const intradayAgreement = intradayTFs.filter(
-      d => (assetFTFC === "bullish" && d === "bullish") || (assetFTFC === "bearish" && d === "bearish")
-    ).length;
-
     const btcFTFC = calcFTFC(btcDailyDir, btcH4Dir);
-    const btcAgreesWithAsset =
-      (btcFTFC === "bullish" && assetFTFC === "bullish") ||
-      (btcFTFC === "bearish" && assetFTFC === "bearish");
-    const btcConflicts =
-      (btcFTFC === "bullish" && assetFTFC === "bearish") ||
-      (btcFTFC === "bearish" && assetFTFC === "bullish");
+    // Agreement metrics are computed against the BREAK direction (tradeDir) below.
 
     // ── Prior highs/lows across all timeframes ────────────────────────────
     const priorDay  = priorHL(dailyCandles);
@@ -308,15 +297,20 @@ export async function POST(req: NextRequest) {
     if (bullBreak && !bearBreak) breakDir = "bullish";
     else if (bearBreak && !bullBreak) breakDir = "bearish";
 
-    // Trade direction = the break direction, and it MUST agree with FTFC.
-    // This prevents shorting into a bullish break (or vice-versa).
-    const directionAgreesFTFC = breakDir !== "none" && breakDir === assetFTFC;
-    const breakAndHoldConfirmed = directionAgreesFTFC;
-    // The side we'll actually trade (only meaningful when confirmed)
+    // Trade direction FOLLOWS the break. FTFC is no longer a gate — it's folded
+    // into the confidence score below (agree = boost, conflict = penalty).
+    const breakAndHoldConfirmed = breakDir !== "none";
     const tradeDir: "bullish" | "bearish" = breakDir === "bearish" ? "bearish" : "bullish";
     const whichBreak = bh.dailyBull || bh.dailyBear ? "daily"
       : bh.h4Bull || bh.h4Bear ? "4H"
       : bh.h1Bull || bh.h1Bear ? "1H" : "none";
+
+    // ── Agreement metrics, all relative to the BREAK direction (tradeDir) ──
+    const ftfcAgrees = assetFTFC === tradeDir;
+    const ftfcConflicts = (assetFTFC === "bullish" && tradeDir === "bearish") || (assetFTFC === "bearish" && tradeDir === "bullish");
+    const intradayAgreement = [h1Dir, h4Dir].filter((d) => d === tradeDir).length;
+    const btcAgreesWithAsset = btcFTFC === tradeDir;
+    const btcConflicts = (btcFTFC === "bullish" && tradeDir === "bearish") || (btcFTFC === "bearish" && tradeDir === "bullish");
 
     // ── Goldbach: multi-timeframe dealing ranges and bias ─────────────────
     // Main dealing range uses daily ADR (macro view)
@@ -344,30 +338,19 @@ export async function POST(req: NextRequest) {
     const gbBiasH4    = goldbachBias(currentPrice, drH4.low, drH4.high);
     const gbBiasH1    = goldbachBias(currentPrice, drH1.low, drH1.high);
 
-    // Count how many TF GB biases agree with FTFC
+    // Count how many TF GB biases agree with the break direction
     const gbBiases = [gbBiasDaily, gbBiasH4, gbBiasH1];
-    const gbAgreement = gbBiases.filter(
-      b => (assetFTFC === "bullish" && b === "bullish") || (assetFTFC === "bearish" && b === "bearish")
-    ).length;
+    const gbAgreement = gbBiases.filter((b) => b === tradeDir).length;
 
     // ── AMD + stop run ────────────────────────────────────────────────────
     const stopRun = detectStopRun(candles5m);
     const amdPhase = getAMDPhase(new Date().getUTCHours());
     const inManipulation = amdPhase === "manipulation";
 
-    // ── FTFC gate ─────────────────────────────────────────────────────────
-    if (assetFTFC === "mixed") {
-      return NextResponse.json({
-        shouldTrade: false,
-        reason: `FTFC mixed — weekly=${weeklyDir}, daily=${dailyDir}. No clear bias.`,
-        ftfc: assetFTFC, weeklyDir, dailyDir, h4Dir, h1Dir, dailyBarType, h4BarType,
-      });
-    }
-
+    // FTFC is no longer a gate (folded into confidence). A clean break is all
+    // that's required to consider a trade.
     if (!breakAndHoldConfirmed) {
-      const reason = breakDir === "none"
-        ? `No clean structural break (bull=${bullBreak}, bear=${bearBreak})`
-        : `${breakDir} break (${whichBreak}) conflicts with FTFC ${assetFTFC} — won't trade against the higher-timeframe trend`;
+      const reason = `No clean structural break (bull=${bullBreak}, bear=${bearBreak})`;
       return NextResponse.json({
         shouldTrade: false,
         reason,
@@ -402,7 +385,7 @@ Daily   : ${dailyDir}  [bar: ${dailyBarType}]
 4H      : ${h4Dir}    [bar: ${h4BarType}]
 1H      : ${h1Dir}    [bar: ${h1BarType}]
 FTFC    : ${assetFTFC.toUpperCase()}
-Intraday alignment (1H/4H agree): ${intradayAgreement}/2 TFs
+Intraday TFs aligned with ${tradeDir} break: ${intradayAgreement}/2
 
 === BTC MARKET FILTER ===
 BTC FTFC : ${btcFTFC.toUpperCase()}
@@ -430,7 +413,7 @@ GB Bias : ${gbBiasH4.toUpperCase()}
 Range   : $${drH1.low.toFixed(2)} → $${drH1.high.toFixed(2)}
 GB Bias : ${gbBiasH1.toUpperCase()}
 
-Goldbach agreement with FTFC: ${gbAgreement}/3 TFs
+Goldbach TF biases aligned with ${tradeDir} break: ${gbAgreement}/3
 Nearest GB level (main DR): ${nearestGB.name} ($${nearestGB.level.toFixed(2)}, ${nearestGB.distPct.toFixed(2)}% away)
 AT Goldbach level: ${atGBLevel ? "YES ✓" : "NO — not at a key level yet"}
 ${gbTpLevel ? `GB TP target: ${Object.entries(gbMain).find(([, v]) => v === gbTpLevel)?.[0] ?? ""} = $${gbTpLevel.toFixed(2)} (${gbTpDistPct?.toFixed(2)}% away)` : ""}
@@ -448,19 +431,22 @@ ${last5min}
 === RISK RULES ===
 SL fixed 30% margin = ±${((0.30 / leverage) * 100).toFixed(2)}% price at ${leverage}x.
 TP: use GB TP target when at a GB level. Otherwise use distance to next TheStrat level.
-Highest confidence: FTFC ✓ + intraday TFs agree + GB bias agrees + at GB level + stop run + London session.
+Confidence drivers: FTFC agrees with break (+20) / conflicts (-15); intraday + GB aligned; at GB level; stop run; BTC agrees; London session.
 `.trim();
 
     // ── Rule-based fallback (no Claude key) ──────────────────────────────
     if (!process.env.ANTHROPIC_API_KEY) {
       const direction = tradeDir === "bullish" ? "long" : "short"; // follow the break
-      let confidence = 55;
-      confidence += intradayAgreement * 10;       // up to +20 for 1H/4H
+      let confidence = 45;
+      // FTFC folded into confidence: agree = strong boost, conflict = penalty
+      if (ftfcAgrees) confidence += 20;
+      else if (ftfcConflicts) confidence -= 15;
+      confidence += intradayAgreement * 8;        // up to +16 for 1H/4H aligned to break
       confidence += gbAgreement * 5;              // up to +15 for GB TF bias
       if (btcAgreesWithAsset) confidence += 10;
       if (btcConflicts) confidence -= 10;
       if (atGBLevel) confidence += 15;
-      if (stopRun.detected && stopRun.direction === (assetFTFC === "bullish" ? "bullish" : "bearish")) confidence += 10;
+      if (stopRun.detected && stopRun.direction === tradeDir) confidence += 10;
       if (inManipulation) confidence += 5;
 
       let tpPct: number;

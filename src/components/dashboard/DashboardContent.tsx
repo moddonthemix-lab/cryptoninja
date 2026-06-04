@@ -23,19 +23,19 @@ export function DashboardContent() {
   const livePos = livePositions.find((p) => p.coin === hlCoin || p.coin === selectedAsset);
   const liveTrig = triggers[hlCoin] ?? triggers[selectedAsset];
 
-  // What to draw on the chart, in priority order:
-  // 1) the trade ticket overlay (matches selected asset)
-  // 2) live position (entry + its TP/SL triggers)  3) paper position  4) AI signal
+  // Chart lines reflect ONLY an actual open position or the live trade ticket —
+  // never a stale AI signal — so they clear the moment a trade closes.
+  // Priority: trade-ticket overlay → live position (entry + triggers) → paper position.
   const overlayMatches = chartOverlay && chartOverlay.asset === selectedAsset;
   const chartEntry = overlayMatches ? chartOverlay!.entry ?? undefined
     : livePos ? parseFloat(livePos.entryPx)
-    : activePos?.entryPrice ?? aiSignal?.suggestedEntry;
+    : activePos?.entryPrice;
   const chartSl = overlayMatches ? chartOverlay!.sl ?? undefined
     : livePos ? liveTrig?.sl
-    : activePos?.stopLoss ?? aiSignal?.suggestedSL;
+    : activePos?.stopLoss;
   const chartTp = overlayMatches ? chartOverlay!.tp ?? undefined
     : livePos ? liveTrig?.tp
-    : activePos?.takeProfit ?? aiSignal?.suggestedTP;
+    : activePos?.takeProfit;
 
   // Quick-access watchlist: defaults + the current selection if it's not in defaults
   const quickList = DEFAULT_WATCHLIST.includes(selectedAsset)
