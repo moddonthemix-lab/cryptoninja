@@ -77,6 +77,8 @@ export function useCopyTrader() {
         if (!ASSETS[sym]) continue;
         targetAssets.add(sym);
         if (copiedAssets.has(sym)) continue;
+        // Selective copy: if a filter is set, only copy those specific symbols
+        if (cfg.assetFilter?.length && !cfg.assetFilter.includes(sym)) continue;
         if (tp.direction === "long" && !cfg.copyLongs) continue;
         if (tp.direction === "short" && !cfg.copyShorts) continue;
 

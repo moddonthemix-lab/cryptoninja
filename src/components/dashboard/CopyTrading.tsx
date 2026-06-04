@@ -119,6 +119,14 @@ export function CopyTrading() {
             <span>{copyStatus.targetCount} target positions</span>
             <span>{copies.length} copied</span>
           </div>
+          {c.assetFilter.length > 0 && (
+            <div className="flex items-center justify-between pt-1 border-t border-ninja-accent/20">
+              <span className="text-ninja-text">Copying only: <b>{c.assetFilter.join(", ")}</b></span>
+              <button onClick={() => setCopyTrade({ assetFilter: [] })} className="text-ninja-accent hover:underline">
+                Copy all
+              </button>
+            </div>
+          )}
         </div>
       )}
 

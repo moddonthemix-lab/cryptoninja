@@ -9,10 +9,21 @@ import { Eye, Plus, X, TrendingUp, TrendingDown, Copy as CopyIcon, RefreshCw, Ch
 interface TraderPos {
   coin: string; direction: "long" | "short"; size: number;
   entryPx: number; leverage: number; positionValue: number; unrealizedPnl: number;
+  openedAt: number | null;
 }
 interface TraderData { address: string; accountValue: number; positions: TraderPos[]; }
 
 const sym = (coin: string) => coin.replace(/^xyz:/, "");
+
+// Compact "time ago" + absolute date for a ms timestamp
+function fmtAge(ms: number | null): string {
+  if (!ms) return "—";
+  const diff = Date.now() - ms;
+  const m = Math.floor(diff / 60000), h = Math.floor(m / 60), d = Math.floor(h / 24);
+  const rel = d > 0 ? `${d}d` : h > 0 ? `${h}h` : m > 0 ? `${m}m` : "now";
+  const date = new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return `${rel} · ${date}`;
+}
 
 function WalletCard({ address, label, onRemove }: { address: string; label: string; onRemove: () => void }) {
   const { copyTrade, setCopyTrade } = useStore();
@@ -39,10 +50,31 @@ function WalletCard({ address, label, onRemove }: { address: string; label: stri
 
   const totalPnl = data?.positions.reduce((s, p) => s + p.unrealizedPnl, 0) ?? 0;
   const isCopying = copyTrade.enabled && copyTrade.targetAddress.toLowerCase() === address.toLowerCase();
+  const sameWallet = copyTrade.targetAddress.toLowerCase() === address.toLowerCase();
 
+  // Wallet-level: copy ALL of this wallet's positions (clears any asset filter)
   const toggleCopy = () => {
-    if (isCopying) setCopyTrade({ enabled: false });
-    else setCopyTrade({ targetAddress: address, enabled: true });
+    if (isCopying) setCopyTrade({ enabled: false, assetFilter: [] });
+    else setCopyTrade({ targetAddress: address, enabled: true, assetFilter: [] });
+  };
+
+  // Is a specific position currently being copied?
+  const isPosCopied = (s: string) =>
+    isCopying && (copyTrade.assetFilter.length === 0 || copyTrade.assetFilter.includes(s));
+
+  // Per-position: copy just this one (toggles membership in the asset filter)
+  const toggleCopyPos = (s: string) => {
+    const ct = useStore.getState().copyTrade;
+    if (!(sameWallet && ct.enabled)) {
+      setCopyTrade({ targetAddress: address, enabled: true, assetFilter: [s] });
+      return;
+    }
+    let filter: string[];
+    if (ct.assetFilter.length === 0) filter = [s];                    // was "all" → narrow to this
+    else if (ct.assetFilter.includes(s)) filter = ct.assetFilter.filter((x) => x !== s);
+    else filter = [...ct.assetFilter, s];
+    if (filter.length === 0) setCopyTrade({ enabled: false, assetFilter: [] });
+    else setCopyTrade({ assetFilter: filter });
   };
 
   return (
@@ -69,7 +101,7 @@ function WalletCard({ address, label, onRemove }: { address: string; label: stri
           <button onClick={toggleCopy}
             className={cn("flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all",
               isCopying ? "bg-red-500/20 text-red-400 hover:bg-red-500/30" : "bg-ninja-accent text-white hover:bg-ninja-accent-hover")}>
-            <CopyIcon size={11} /> {isCopying ? "Stop" : "Copy"}
+            <CopyIcon size={11} /> {isCopying ? "Stop" : "Copy All"}
           </button>
           <button onClick={onRemove} title="Remove" className="p-1.5 rounded-md text-ninja-muted hover:text-red-400 hover:bg-red-500/10">
             <X size={14} />
@@ -110,6 +142,8 @@ function WalletCard({ address, label, onRemove }: { address: string; label: stri
                 <th className="text-right py-1.5">Entry</th>
                 <th className="text-right py-1.5">Notional</th>
                 <th className="text-right py-1.5">PnL</th>
+                <th className="text-right py-1.5">Opened</th>
+                <th className="py-1.5" />
               </tr>
             </thead>
             <tbody>
@@ -131,8 +165,22 @@ function WalletCard({ address, label, onRemove }: { address: string; label: stri
                     </td>
                     <td className="py-1.5 text-right font-mono text-ninja-muted">${p.entryPx.toFixed(p.entryPx < 1 ? 5 : 2)}</td>
                     <td className="py-1.5 text-right font-mono text-ninja-text">${p.positionValue.toFixed(2)}</td>
-                    <td className={cn("py-1.5 pr-1 text-right font-mono font-bold", p.unrealizedPnl >= 0 ? "text-ninja-green" : "text-ninja-red")}>
+                    <td className={cn("py-1.5 text-right font-mono font-bold", p.unrealizedPnl >= 0 ? "text-ninja-green" : "text-ninja-red")}>
                       {p.unrealizedPnl >= 0 ? "+" : ""}${p.unrealizedPnl.toFixed(2)}
+                    </td>
+                    <td className="py-1.5 text-right font-mono text-ninja-muted/80 whitespace-nowrap text-[11px]">{fmtAge(p.openedAt)}</td>
+                    <td className="py-1.5 pl-2 text-right">
+                      {ASSETS[s] && (
+                        <button
+                          onClick={() => toggleCopyPos(s)}
+                          title={isPosCopied(s) ? "Stop copying this position" : "Copy this position"}
+                          className={cn("inline-flex items-center gap-1 px-2 py-1 rounded border text-[11px] font-bold transition-all",
+                            isPosCopied(s) ? "border-ninja-accent/50 text-ninja-accent bg-ninja-accent/10"
+                              : "border-ninja-border text-ninja-muted hover:text-ninja-accent hover:border-ninja-accent/50")}
+                        >
+                          {isPosCopied(s) ? <><CheckCircle size={10} /> Copying</> : <><CopyIcon size={10} /> Copy</>}
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );

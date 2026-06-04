@@ -48,6 +48,7 @@ interface AppState {
     leverageCap: number;
     copyLongs: boolean;
     copyShorts: boolean;
+    assetFilter: string[];     // empty = copy all their positions; else only these symbols
   };
   // Copy-trade runtime status/log (not persisted) + a nonce to force a sync
   copyStatus: { state: "off" | "watching" | "error"; lastCheck: string | null; targetEquity: number | null; targetCount: number; copiedCount: number };
@@ -130,6 +131,7 @@ export const useStore = create<AppState>()(
         leverageCap: 5,
         copyLongs: true,
         copyShorts: true,
+        assetFilter: [],
       },
       copyStatus: { state: "off", lastCheck: null, targetEquity: null, targetCount: 0, copiedCount: 0 },
       copyLog: [],
