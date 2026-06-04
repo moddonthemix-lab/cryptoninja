@@ -3,20 +3,16 @@
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { AutoTrader } from "./AutoTrader";
-import { AIBrain } from "./AIBrain";
 import { TradingPanel } from "@/components/trading/TradingPanel";
-import { StrategyRunner } from "@/components/strategy/StrategyRunner";
 import { HyperliquidAccount } from "@/components/wallet/HyperliquidAccount";
 import { LiveTradingSetup } from "@/components/wallet/LiveTradingSetup";
 import { useStore } from "@/store/useStore";
 
-type Tab = "BOT" | "AI" | "TRADE" | "STRAT";
+type Tab = "BOT" | "TRADE";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "BOT", label: "BOT" },
-  { id: "AI", label: "AI" },
   { id: "TRADE", label: "TRADE" },
-  { id: "STRAT", label: "STRAT" },
 ];
 
 export function RightPanel() {
@@ -56,9 +52,7 @@ export function RightPanel() {
             <AutoTrader />
           </>
         )}
-        {activeTab === "AI" && <AIBrain />}
         {activeTab === "TRADE" && <TradingPanel />}
-        {activeTab === "STRAT" && <StrategyRunner />}
       </div>
     </div>
   );
