@@ -180,7 +180,7 @@ export function AutoTrader() {
             {status.lastConfidence !== null && (
               <span className={cn(
                 "font-mono font-bold text-sm tabular-nums",
-                status.lastConfidence >= 65 ? "text-ninja-green" : "text-yellow-400"
+                status.lastConfidence >= 60 ? "text-ninja-green" : "text-yellow-400"
               )}>
                 {status.lastConfidence}%
               </span>
@@ -190,10 +190,10 @@ export function AutoTrader() {
           {/* Confidence bar with the 65% threshold marked */}
           <div className="relative h-1.5 rounded-full bg-ninja-border overflow-hidden">
             <div
-              className={cn("h-full rounded-full", (status.lastConfidence ?? 0) >= 65 ? "bg-ninja-green" : "bg-yellow-400")}
+              className={cn("h-full rounded-full", (status.lastConfidence ?? 0) >= 60 ? "bg-ninja-green" : "bg-yellow-400")}
               style={{ width: `${Math.min(100, Math.max(0, status.lastConfidence ?? 0))}%` }}
             />
-            <div className="absolute top-0 bottom-0 w-px bg-white/50" style={{ left: "65%" }} />
+            <div className="absolute top-0 bottom-0 w-px bg-white/50" style={{ left: "60%" }} />
           </div>
 
           <div className="space-y-0.5">
@@ -223,7 +223,7 @@ export function AutoTrader() {
             ))}
           </div>
           <p className="text-ninja-muted/50 text-[10px] pt-0.5 border-t border-ninja-border">
-            Needs ≥65% to trade · last scored signal
+            Needs ≥60% to trade · last scored signal
           </p>
         </div>
       )}

@@ -116,12 +116,15 @@ function confirmBreak(
 ): { confirmed: boolean; needs15m: boolean; via: string } {
   if (candles5m.length < 2 || level <= 0) return { confirmed: false, needs15m: false, via: "" };
   const last5 = candles5m[candles5m.length - 1];
-  const held = direction === "bullish" ? last5.close > level : last5.close < level;
-  if (!held) return { confirmed: false, needs15m: false, via: "" };
+  const last15 = candles15m[candles15m.length - 1];
+  const held5 = direction === "bullish" ? last5.close > level : last5.close < level;
+  const held15 = last15 ? (direction === "bullish" ? last15.close > level : last15.close < level) : false;
+  // "Holding" = the latest 5m OR 15m close is still beyond the level. Using the
+  // 15m too means a single 5m wick back through the level doesn't void a break
+  // that is clearly holding on the higher resolution candle.
+  if (!held5 && !held15) return { confirmed: false, needs15m: false, via: "" };
 
   const bodied5 = candles5m.slice(-6).filter((c) => bodyBeyond(c, level, direction)).length;
-  const last15 = candles15m[candles15m.length - 1];
-  const held15 = last15 ? (direction === "bullish" ? last15.close > level : last15.close < level) : false;
   const bodied15 = held15 && candles15m.slice(-3).some((c) => bodyBeyond(c, level, direction));
 
   // Strong: a 15m candle confirms, or two+ fully-bodied 5m candles held beyond the level
@@ -353,18 +356,24 @@ export async function POST(req: NextRequest) {
     const bullBreak = bh.dailyBull || bh.h4Bull || bh.h1Bull;
     const bearBreak = bh.dailyBear || bh.h4Bear || bh.h1Bear;
 
-    // Require a CLEAN one-sided break; choppy two-sided = no trade
+    // Resolve direction from the FRESHEST (lowest) timeframe with a clean,
+    // one-sided confirmed break — that is the structure actionable right now.
+    // A persistent higher-TF bias (e.g. price above yesterday's high all day)
+    // must NOT cancel a fresh 1H break in the opposite direction. Higher
+    // timeframes (FTFC) inform confidence, not direction.
     let breakDir: "bullish" | "bearish" | "none" = "none";
-    if (bullBreak && !bearBreak) breakDir = "bullish";
-    else if (bearBreak && !bullBreak) breakDir = "bearish";
+    let whichBreak: "daily" | "4H" | "1H" | "none" = "none";
+    if (cH1Bull.confirmed && !cH1Bear.confirmed) { breakDir = "bullish"; whichBreak = "1H"; }
+    else if (cH1Bear.confirmed && !cH1Bull.confirmed) { breakDir = "bearish"; whichBreak = "1H"; }
+    else if (cH4Bull.confirmed && !cH4Bear.confirmed) { breakDir = "bullish"; whichBreak = "4H"; }
+    else if (cH4Bear.confirmed && !cH4Bull.confirmed) { breakDir = "bearish"; whichBreak = "4H"; }
+    else if (cDailyBull.confirmed && !cDailyBear.confirmed) { breakDir = "bullish"; whichBreak = "daily"; }
+    else if (cDailyBear.confirmed && !cDailyBull.confirmed) { breakDir = "bearish"; whichBreak = "daily"; }
 
     // Trade direction FOLLOWS the break. FTFC is no longer a gate — it's folded
     // into the confidence score below (agree = boost, conflict = penalty).
     const breakAndHoldConfirmed = breakDir !== "none";
     const tradeDir: "bullish" | "bearish" = breakDir === "bearish" ? "bearish" : "bullish";
-    const whichBreak = bh.dailyBull || bh.dailyBear ? "daily"
-      : bh.h4Bull || bh.h4Bear ? "4H"
-      : bh.h1Bull || bh.h1Bear ? "1H" : "none";
 
     // ── Agreement metrics, all relative to the BREAK direction (tradeDir) ──
     const ftfcAgrees = assetFTFC === tradeDir;

@@ -59,7 +59,7 @@ const trailMeta: Record<string, {
 
 const MAX_TRADES_PER_DAY = 5;
 const TRADE_COOLDOWN_MS = 30 * 60 * 1000; // 30 min between auto trades
-const MIN_CONFIDENCE = 65;                 // only take 65%+ confidence setups
+const MIN_CONFIDENCE = 60;                 // only take 60%+ confidence setups
 
 export function useAutoTrader(asset: Asset) {
   const {
