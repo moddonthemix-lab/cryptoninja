@@ -294,18 +294,29 @@ export async function POST(req: NextRequest) {
       : bearishBHCount > bullishBHCount ? "bearish"
       : "mixed";
 
-    // ── Structural break requirement (saves API credits — only trade real breaks) ──
-    // Primary: break of the prior DAILY high (long) or low (short), holding on 5m.
-    // Mid-day fallback: a prior 4H high/low break (when the daily is well underway).
+    // ── Direction FOLLOWS the actual 5m break of prior structure ──
+    // Bullish break = 5m took out a prior high (1H/4H/daily) and is holding above.
+    // Bearish break = 5m took out a prior low and is holding below.
+    // Daily breaks count anytime; 1H/4H breaks count mid-day (active sessions).
     const utcHour = new Date().getUTCHours();
     const midDay = utcHour >= 8 && utcHour <= 22; // London + NY hours
-    const dailyBreak = assetFTFC === "bullish" ? bh.dailyBull : bh.dailyBear;
-    const h4Break = assetFTFC === "bullish" ? bh.h4Bull : bh.h4Bear;
-    const structuralBreak = dailyBreak || (midDay && h4Break);
+    const bullBreak = bh.dailyBull || (midDay && (bh.h4Bull || bh.h1Bull));
+    const bearBreak = bh.dailyBear || (midDay && (bh.h4Bear || bh.h1Bear));
 
-    // Only proceed (and only spend a Claude call) on a genuine structural break
-    // that agrees with FTFC direction.
-    const breakAndHoldConfirmed = structuralBreak;
+    // Require a CLEAN one-sided break; choppy two-sided = no trade
+    let breakDir: "bullish" | "bearish" | "none" = "none";
+    if (bullBreak && !bearBreak) breakDir = "bullish";
+    else if (bearBreak && !bullBreak) breakDir = "bearish";
+
+    // Trade direction = the break direction, and it MUST agree with FTFC.
+    // This prevents shorting into a bullish break (or vice-versa).
+    const directionAgreesFTFC = breakDir !== "none" && breakDir === assetFTFC;
+    const breakAndHoldConfirmed = directionAgreesFTFC;
+    // The side we'll actually trade (only meaningful when confirmed)
+    const tradeDir: "bullish" | "bearish" = breakDir === "bearish" ? "bearish" : "bullish";
+    const whichBreak = bh.dailyBull || bh.dailyBear ? "daily"
+      : bh.h4Bull || bh.h4Bear ? "4H"
+      : bh.h1Bull || bh.h1Bear ? "1H" : "none";
 
     // ── Goldbach: multi-timeframe dealing ranges and bias ─────────────────
     // Main dealing range uses daily ADR (macro view)
@@ -354,10 +365,13 @@ export async function POST(req: NextRequest) {
     }
 
     if (!breakAndHoldConfirmed) {
+      const reason = breakDir === "none"
+        ? `No clean structural break (bull=${bullBreak}, bear=${bearBreak})`
+        : `${breakDir} break (${whichBreak}) conflicts with FTFC ${assetFTFC} — won't trade against the higher-timeframe trend`;
       return NextResponse.json({
         shouldTrade: false,
-        reason: `No structural break — need a prior ${assetFTFC === "bullish" ? "daily-high" : "daily-low"} break${midDay ? ` or ${assetFTFC === "bullish" ? "4H-high" : "4H-low"} break (mid-day)` : ""} holding on 5m. (dailyBreak=${dailyBreak}, 4Hbreak=${h4Break}, midDay=${midDay})`,
-        ftfc: assetFTFC, weeklyDir, dailyDir, h4Dir, h1Dir,
+        reason,
+        ftfc: assetFTFC, weeklyDir, dailyDir, h4Dir, h1Dir, breakDir, whichBreak,
         priorDayHigh: priorDay.high, priorDayLow: priorDay.low,
         priorH4High: priorH4.high, priorH4Low: priorH4.low,
         priorH1High: priorH1.high, priorH1Low: priorH1.low,
@@ -439,7 +453,7 @@ Highest confidence: FTFC ✓ + intraday TFs agree + GB bias agrees + at GB level
 
     // ── Rule-based fallback (no Claude key) ──────────────────────────────
     if (!process.env.ANTHROPIC_API_KEY) {
-      const direction = assetFTFC === "bullish" ? "long" : "short";
+      const direction = tradeDir === "bullish" ? "long" : "short"; // follow the break
       let confidence = 55;
       confidence += intradayAgreement * 10;       // up to +20 for 1H/4H
       confidence += gbAgreement * 5;              // up to +15 for GB TF bias
@@ -484,22 +498,23 @@ Highest confidence: FTFC ✓ + intraday TFs agree + GB bias agrees + at GB level
     }
 
     // ── Claude path ───────────────────────────────────────────────────────
+    const tradeSide = tradeDir === "bullish" ? "long" : "short";
     const prompt = `You are an expert crypto trader using TheStrat (Rob Smith) + Goldbach methodology.
-All pre-conditions passed: FTFC=${assetFTFC}, break-and-hold confirmed.
+Pre-conditions passed: FTFC=${assetFTFC}; a ${tradeDir} break of the prior ${whichBreak} ${tradeDir === "bullish" ? "high" : "low"} is confirmed and holding on the 5m.
+The trade DIRECTION is therefore ${tradeSide.toUpperCase()} — do not flip it. Your job is to judge quality and parameters.
 
 ${contextBlock}
 
 DECISION RULES:
-TheStrat direction: FTFC (weekly+daily) is the master bias. Intraday TFs (1H/4H) add conviction.
+The direction is fixed to the confirmed break (${tradeSide}). Never return the opposite side.
 Goldbach entries: enter at GB levels (OB=11/89%, FVG=17/83%, Breaker=41/59%, Equil=47/53%).
-Goldbach direction: when multiple TF GB biases (discount/premium) agree with FTFC, higher confidence.
 GB TP: OB→Breaker, FVG→Breaker, Breaker→OB, Equil→opposite Equil, LV→Equil.
-Best setup: FTFC ✓ + 2-3 intraday TFs agree + 2-3 GB TF biases agree + AT GB level + stop run + London session.
-Weaker setup: FTFC ✓ but intraday mixed + not at GB level → lower confidence or no trade.
+Best setup: break + intraday TFs agree + GB bias agrees + at GB level + stop run + London session.
+If the setup looks weak (no GB level, no stop run, conflicting BTC), return shouldTrade=false.
 
 Decide:
 1. shouldTrade: true/false
-2. direction: "long" or "short" (follow FTFC)
+2. direction: "${tradeSide}" (fixed — must match the break)
 3. confidence: 0-100. Score: +7 per intraday TF agreement (max +21), +5 per GB TF bias agreement (max +15), +15 if at GB level, +10 stop run, +10 BTC agrees, +10 London session
 4. tpPct: 25-100 (% margin). Use GB TP distance × leverage if at a GB level. Otherwise TheStrat key level distance × leverage.
 5. isSwing: true if daily 2U/2D + all 3 intraday TFs agree + BTC agrees + at OB/FVG level
@@ -540,7 +555,8 @@ Return ONLY this JSON:
       });
     }
 
-    const direction: "long" | "short" = ai.direction === "short" ? "short" : "long";
+    // Force direction to the confirmed break — never let the model trade against it
+    const direction: "long" | "short" = tradeDir === "bullish" ? "long" : "short";
     const tpPct = Math.min(100, Math.max(25, ai.tpPct ?? 50));
     const slPricePct = 0.30 / leverage;
     const tpPricePct = tpPct / 100 / leverage;
