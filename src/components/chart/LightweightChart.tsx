@@ -8,6 +8,7 @@ import {
 import { ASSETS } from "@/types";
 import { useStore } from "@/store/useStore";
 import { cn } from "@/lib/utils";
+import { Crosshair } from "lucide-react";
 
 type Bar = { time: number; open: number; high: number; low: number; close: number; volume: number };
 
@@ -106,6 +107,7 @@ export const LightweightChart = memo(function LightweightChart({
         cleaned.map((c) => ({ time: c.time as UTCTimestamp, value: c.volume, color: c.close >= c.open ? "#10b98133" : "#ef444433" }))
       );
       lastBarRef.current = cleaned[cleaned.length - 1];
+      candleSeriesRef.current?.priceScale().applyOptions({ autoScale: true });
       chartRef.current?.timeScale().fitContent();
       setEmpty(false);
       setLoading(false);
@@ -178,6 +180,14 @@ export const LightweightChart = memo(function LightweightChart({
 
   const cfg = ASSETS[asset];
 
+  // Snap the view back to the latest candles + auto price scale (handy after
+  // panning, or when a prior asset left the view at a different price level)
+  const recenter = () => {
+    candleSeriesRef.current?.priceScale().applyOptions({ autoScale: true });
+    chartRef.current?.timeScale().fitContent();
+    chartRef.current?.timeScale().scrollToRealTime();
+  };
+
   return (
     <div className="bg-ninja-card rounded-xl overflow-hidden border border-ninja-border">
       {/* Header: symbol + timeframe pills */}
@@ -186,19 +196,28 @@ export const LightweightChart = memo(function LightweightChart({
           <span className="font-bold text-sm" style={{ color: cfg?.color }}>{asset}</span>
           <span className="text-ninja-muted text-xs">{cfg?.name}</span>
         </div>
-        <div className="flex items-center gap-1 bg-ninja-bg/50 rounded-lg p-1">
-          {TIMEFRAMES.map((tf) => (
-            <button
-              key={tf}
-              onClick={() => setTimeframe(tf)}
-              className={cn(
-                "px-2.5 py-1 rounded-md text-xs font-bold transition-all",
-                timeframe === tf ? "bg-ninja-accent text-white" : "text-ninja-muted hover:text-ninja-text"
-              )}
-            >
-              {tf}
-            </button>
-          ))}
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={recenter}
+            title="Recenter chart on latest price"
+            className="flex items-center justify-center w-7 h-7 rounded-md bg-ninja-bg/50 text-ninja-muted hover:text-ninja-accent hover:bg-ninja-border/40 transition-all"
+          >
+            <Crosshair size={13} />
+          </button>
+          <div className="flex items-center gap-1 bg-ninja-bg/50 rounded-lg p-1">
+            {TIMEFRAMES.map((tf) => (
+              <button
+                key={tf}
+                onClick={() => setTimeframe(tf)}
+                className={cn(
+                  "px-2.5 py-1 rounded-md text-xs font-bold transition-all",
+                  timeframe === tf ? "bg-ninja-accent text-white" : "text-ninja-muted hover:text-ninja-text"
+                )}
+              >
+                {tf}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

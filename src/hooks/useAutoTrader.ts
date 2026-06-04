@@ -37,11 +37,11 @@ export interface AutoTraderStatus {
 }
 
 // Ratcheting profit-lock trailing stop:
-//   at +30% profit → lock +10%; then every additional +20% → lock another +5%
-const TRAIL_ARM_PCT = 30;   // start locking once profit reaches this
-const TRAIL_FIRST_LOCK = 10; // first locked level
+//   at +15% profit → lock +5%; then every additional +20% → lock another +7%
+const TRAIL_ARM_PCT = 15;   // start locking once profit reaches this
+const TRAIL_FIRST_LOCK = 5; // first locked level
 const TRAIL_STEP_PCT = 20;  // each further profit step
-const TRAIL_STEP_LOCK = 5;  // lock added per step
+const TRAIL_STEP_LOCK = 7;  // lock added per step
 function lockTarget(pnlPct: number): number {
   if (pnlPct < TRAIL_ARM_PCT) return 0;
   return TRAIL_FIRST_LOCK + TRAIL_STEP_LOCK * Math.floor((pnlPct - TRAIL_ARM_PCT) / TRAIL_STEP_PCT);
@@ -59,7 +59,7 @@ const trailMeta: Record<string, {
 
 const MAX_TRADES_PER_DAY = 5;
 const TRADE_COOLDOWN_MS = 30 * 60 * 1000; // 30 min between auto trades
-const MIN_CONFIDENCE = 60;                 // only take 60%+ confidence setups
+const MIN_CONFIDENCE = 67;                 // only take 67%+ confidence setups
 
 export function useAutoTrader(asset: Asset) {
   const {
@@ -169,13 +169,13 @@ export function useAutoTrader(asset: Asset) {
         const meta = trailMeta[pos.id];
         const isCurrentAsset = pos.asset === asset;
 
-        // ── Hard SL: -30% of margin ──
-        if (pnlPct <= -30) {
+        // ── Hard SL: -23% of margin ──
+        if (pnlPct <= -23) {
           closeLive(pos, price);
           closePosition(pos.id, price, "sl");
           alertExit(pos, price, "SL", pnlPct);
           if (meta) delete trailMeta[pos.id];
-          addLog(`SL hit on ${pos.asset} @ $${price.toFixed(2)} (−30% margin)`, "sl");
+          addLog(`SL hit on ${pos.asset} @ $${price.toFixed(2)} (−23% margin)`, "sl");
           if (isCurrentAsset) {
             setStatus((s) => ({ ...s, state: "idle", currentPnlPct: null, peakPnlPct: null, trailActive: false }));
           }

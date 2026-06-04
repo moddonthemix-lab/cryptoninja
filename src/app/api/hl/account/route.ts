@@ -56,7 +56,14 @@ async function loadAccount(address: string) {
     (state as any).assetPositions = xyzPositions;
   }
 
-  return { state, orders, spotUsdcBalance };
+  // The xyz dex is a SEPARATE margin account — surface its equity/withdrawable/
+  // margin so total equity reflects funds held there (e.g. for stock positions).
+  const xyzSummary: any = (xyzState as any)?.crossMarginSummary;
+  const xyzAccountValue = xyzSummary ? parseFloat(xyzSummary.accountValue) || 0 : 0;
+  const xyzWithdrawable = (xyzState as any)?.withdrawable ? parseFloat((xyzState as any).withdrawable) || 0 : 0;
+  const xyzMarginUsed = xyzSummary ? parseFloat(xyzSummary.totalMarginUsed) || 0 : 0;
+
+  return { state, orders, spotUsdcBalance, xyzAccountValue, xyzWithdrawable, xyzMarginUsed };
 }
 
 export async function GET(req: NextRequest) {

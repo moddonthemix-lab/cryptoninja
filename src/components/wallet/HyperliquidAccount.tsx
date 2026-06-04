@@ -9,15 +9,15 @@ import { cn } from "@/lib/utils";
 export function HyperliquidAccount() {
   const { isConnected } = useAccount();
   const { tradingMode } = useStore();
-  const { account, livePositions, totalBalance, balanceInSpotOnly, availableBalance, loading, refreshAccount } = useHyperliquid();
+  const { account, livePositions, totalBalance, balanceInSpotOnly, availableBalance, totalMarginUsed, loading, refreshAccount } = useHyperliquid();
 
   if (tradingMode !== "live") return null;
 
-  // Equity = full account value (perp equity + spot USDC, unified margin)
+  // Equity = full account value (main perp + xyz dex + spot USDC)
   const equity = totalBalance > 0 ? totalBalance : null;
-  // Available = free collateral not tied up as margin (withdrawable + spot)
+  // Available = free collateral not tied up as margin across dexes + spot
   const available = equity !== null ? availableBalance : null;
-  const marginUsed = account ? parseFloat(account.totalMarginUsed) : null;
+  const marginUsed = equity !== null ? totalMarginUsed : null;
 
   // Total open (unrealized) PnL across all live positions
   const totalUnrealized = livePositions.reduce((sum, p) => sum + parseFloat(p.unrealizedPnl || "0"), 0);

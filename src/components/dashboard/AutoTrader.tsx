@@ -193,7 +193,7 @@ export function AutoTrader() {
             {status.lastConfidence !== null && (
               <span className={cn(
                 "font-mono font-bold text-sm tabular-nums",
-                status.lastConfidence >= 60 ? "text-ninja-green" : "text-yellow-400"
+                status.lastConfidence >= 67 ? "text-ninja-green" : "text-yellow-400"
               )}>
                 {status.lastConfidence}%
               </span>
@@ -203,10 +203,10 @@ export function AutoTrader() {
           {/* Confidence bar with the 65% threshold marked */}
           <div className="relative h-1.5 rounded-full bg-ninja-border overflow-hidden">
             <div
-              className={cn("h-full rounded-full", (status.lastConfidence ?? 0) >= 60 ? "bg-ninja-green" : "bg-yellow-400")}
+              className={cn("h-full rounded-full", (status.lastConfidence ?? 0) >= 67 ? "bg-ninja-green" : "bg-yellow-400")}
               style={{ width: `${Math.min(100, Math.max(0, status.lastConfidence ?? 0))}%` }}
             />
-            <div className="absolute top-0 bottom-0 w-px bg-white/50" style={{ left: "60%" }} />
+            <div className="absolute top-0 bottom-0 w-px bg-white/50" style={{ left: "67%" }} />
           </div>
 
           <div className="space-y-0.5">
@@ -236,7 +236,7 @@ export function AutoTrader() {
             ))}
           </div>
           <p className="text-ninja-muted/50 text-[10px] pt-0.5 border-t border-ninja-border">
-            Needs ≥60% to trade · last scored signal
+            Needs ≥67% to trade · last scored signal
           </p>
         </div>
       )}
@@ -287,7 +287,7 @@ export function AutoTrader() {
         </div>
 
         <p className="text-ninja-muted/60 text-[10px] text-center pt-0.5">
-          SL fixed 30% · TP 25–100% (AI)
+          SL fixed 23% · TP 25–100% (AI)
         </p>
       </div>
 
@@ -337,7 +337,7 @@ export function AutoTrader() {
               {status.lockedPct > 0 ? (
                 <span>SL locked at <b>+{status.lockedPct}%</b> profit · peak +{status.peakPnlPct.toFixed(0)}%</span>
               ) : (
-                <span>Trail locks +10% once trade hits +30% (peak +{status.peakPnlPct.toFixed(0)}%)</span>
+                <span>Trail locks +5% once trade hits +15%, +7% each +20% after (peak +{status.peakPnlPct.toFixed(0)}%)</span>
               )}
             </div>
           )}
@@ -356,7 +356,7 @@ export function AutoTrader() {
         <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/5 p-2.5 text-xs text-yellow-300 leading-relaxed">
           <strong>Live mode:</strong> Bot will sign real orders via your wallet.
           Each trade uses 5% of your Hyperliquid equity.
-          SL at −30% margin, TP dynamic (25–100%).
+          SL at −23% margin, TP dynamic (25–100%).
         </div>
       )}
 
@@ -365,7 +365,7 @@ export function AutoTrader() {
         <p className="text-ninja-muted/70 text-xs leading-relaxed">
           AI scans {selectedAsset} every minute using TheStrat + Goldbach.
           Enters on a fully-bodied 5m/15m break of prior structure.
-          Hard SL at −30% margin. TP is dynamic (25–100%) based on momentum.
+          Hard SL at −23% margin. TP is dynamic (25–100%) based on momentum.
           Trailing stop locks profit once you're ahead.
         </p>
       )}

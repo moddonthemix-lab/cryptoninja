@@ -524,7 +524,7 @@ Stop run (5m)    : ${stopRun.detected ? `YES — ${stopRun.direction} (swept $${
 ${last5min}
 
 === RISK RULES ===
-SL fixed 30% margin = ±${((0.30 / leverage) * 100).toFixed(2)}% price at ${leverage}x.
+SL fixed 23% margin = ±${((0.23 / leverage) * 100).toFixed(2)}% price at ${leverage}x.
 TP: use GB TP target when at a GB level. Otherwise use distance to next TheStrat level.
 Confidence drivers: FTFC agrees with break (+20) / conflicts (-15); intraday + GB aligned; at GB level; stop run; BTC agrees (n/a for HYPE/ONDO/PENDLE); 15m confirmation; London session.
 `.trim();
@@ -554,14 +554,14 @@ Confidence drivers: FTFC agrees with break (+20) / conflicts (-15); intraday + G
 
       if (h4Dir === "neutral" && h1Dir === "neutral") tpPct = Math.round(tpPct * 0.7);
 
-      const slPricePct = 0.30 / leverage;
+      const slPricePct = 0.23 / leverage;
       const tpPricePct = tpPct / 100 / leverage;
       const isSwing = (dailyBarType === "2U" || dailyBarType === "2D") && intradayAgreement === 2 && btcAgreesWithAsset;
 
       return NextResponse.json({
         shouldTrade: true, direction, leverage,
         confidence: Math.min(100, Math.max(0, confidence)),
-        tpPct, slPct: 30, isSwing,
+        tpPct, slPct: 23, isSwing,
         entry: currentPrice,
         sl: direction === "long" ? currentPrice * (1 - slPricePct) : currentPrice * (1 + slPricePct),
         tp: direction === "long" ? currentPrice * (1 + tpPricePct) : currentPrice * (1 - tpPricePct),
@@ -641,13 +641,13 @@ Return ONLY this JSON:
     // Force direction to the confirmed break — never let the model trade against it
     const direction: "long" | "short" = tradeDir === "bullish" ? "long" : "short";
     const tpPct = Math.min(100, Math.max(25, ai.tpPct ?? 50));
-    const slPricePct = 0.30 / leverage;
+    const slPricePct = 0.23 / leverage;
     const tpPricePct = tpPct / 100 / leverage;
 
     return NextResponse.json({
       shouldTrade: true, direction, leverage,
       confidence: Math.min(100, Math.max(0, ai.confidence ?? 60)),
-      tpPct, slPct: 30, isSwing: ai.isSwing ?? false,
+      tpPct, slPct: 23, isSwing: ai.isSwing ?? false,
       entry: currentPrice,
       sl: direction === "long" ? currentPrice * (1 - slPricePct) : currentPrice * (1 + slPricePct),
       tp: direction === "long" ? currentPrice * (1 + tpPricePct) : currentPrice * (1 - tpPricePct),
