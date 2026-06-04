@@ -8,8 +8,8 @@ import { useHyperliquid } from "@/hooks/useHyperliquid";
 
 export function TopBar() {
   const { marketData, tradingMode, setTradingMode, selectedAsset, setSelectedAsset } = useStore();
-  const { account } = useHyperliquid();
-  const equity = account ? parseFloat(account.accountValue) : null;
+  const { totalBalance } = useHyperliquid();
+  const equity = totalBalance > 0 ? totalBalance : null;
 
   return (
     <header className="bg-ninja-card border-b border-ninja-border px-4 py-2 flex items-center gap-4">

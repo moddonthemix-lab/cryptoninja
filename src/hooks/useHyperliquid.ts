@@ -265,10 +265,13 @@ export function useHyperliquid() {
     }
   }, [assetMeta, tradingMode, submitAction, refreshAccount]);
 
-  // Total available balance: perp equity OR spot USDC (unified accounts)
+  // Hyperliquid uses unified spot + perp margin, so total account value is the
+  // perp equity PLUS any USDC sitting in the spot wallet.
   const perpEquity = account ? parseFloat(account.accountValue) : 0;
-  const totalBalance = perpEquity > 0 ? perpEquity : spotUsdcBalance;
-  const balanceInSpotOnly = perpEquity === 0 && spotUsdcBalance > 0;
+  const totalBalance = perpEquity + spotUsdcBalance;                 // total equity
+  // Free collateral that isn't already tied up as margin in open positions
+  const availableBalance = withdrawable + spotUsdcBalance;
+  const balanceInSpotOnly = perpEquity === 0 && spotUsdcBalance > 0; // nothing in perp yet
 
   return {
     account,
@@ -281,6 +284,7 @@ export function useHyperliquid() {
     cancelOrderByCoin,
     totalBalance,
     balanceInSpotOnly,
+    availableBalance,
     loading,
     error,
     isLive: tradingMode === "live",

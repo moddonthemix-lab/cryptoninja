@@ -355,7 +355,7 @@ export function useAutoTrader(asset: Asset) {
       //    confidence (65% → 30%, 100% → 50%) ──
       const riskPct = 0.30 + Math.min(1, Math.max(0, (confidence - MIN_CONFIDENCE) / (100 - MIN_CONFIDENCE))) * 0.20;
       const available = tradingMode === "live"
-        ? (hl.totalBalance || 0)
+        ? (hl.availableBalance || 0)
         : useStore.getState().paperBalance;
       const marginToUse = available * riskPct;
       const positionUsd = marginToUse * autoTradeLeverage; // notional
@@ -469,7 +469,7 @@ export function useAutoTrader(asset: Asset) {
     } finally {
       scanningRef.current = false;
     }
-  }, [asset, autoTradeLeverage, emergencyStop, tradingMode, openPosition, addLog, hl.setTpSl, hl.totalBalance]);
+  }, [asset, autoTradeLeverage, emergencyStop, tradingMode, openPosition, addLog, hl.setTpSl, hl.availableBalance]);
 
   // ── Scan timer: only runs when bot is enabled ────────────────────────────
   useEffect(() => {
