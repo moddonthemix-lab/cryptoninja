@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useStore } from "@/store/useStore";
 import { useCopyTrader } from "@/hooks/useCopyTrader";
+import { useHyperliquid } from "@/hooks/useHyperliquid";
 import { cn } from "@/lib/utils";
 import { ASSETS } from "@/types";
 import { Users, AlertTriangle, TrendingUp, TrendingDown, ExternalLink, RefreshCw, CheckCircle } from "lucide-react";
@@ -21,9 +22,12 @@ const LOG_COLOR: Record<string, string> = {
 };
 
 export function CopyTrading() {
-  const { copyTrade, setCopyTrade, tradingMode, openPositions, copyStatus, copyLog, requestCopySync } = useStore();
+  const { copyTrade, setCopyTrade, tradingMode, openPositions, copyStatus, copyLog, requestCopySync, paperBalance } = useStore();
+  const { totalBalance, availableBalance } = useHyperliquid();
   const c = copyTrade;
   const isLive = tradingMode === "live";
+  const freeToTrade = isLive ? availableBalance : paperBalance;
+  const equityShown = isLive ? totalBalance : paperBalance;
 
   const [preview, setPreview] = useState<{ accountValue: number; positions: TargetPos[] } | null>(null);
   const [previewErr, setPreviewErr] = useState<string | null>(null);
@@ -117,6 +121,17 @@ export function CopyTrading() {
           </div>
         </div>
       )}
+
+      {/* Funds available for copies */}
+      <div className="flex items-center justify-between text-xs bg-ninja-bg/40 rounded-lg px-2.5 py-2">
+        <span className="text-ninja-muted">{isLive ? "Free to trade" : "Paper balance"}</span>
+        <span className="font-mono">
+          <span className={cn("font-bold", freeToTrade > 0 ? "text-ninja-green" : "text-red-400")}>
+            ${freeToTrade.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </span>
+          <span className="text-ninja-muted/60 ml-1.5">/ ${equityShown.toFixed(2)} equity</span>
+        </span>
+      </div>
 
       {/* Sizing mode */}
       <div className="space-y-2">

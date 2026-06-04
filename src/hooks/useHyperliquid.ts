@@ -271,11 +271,11 @@ export function useHyperliquid() {
   const perpEquity = account ? parseFloat(account.accountValue) : 0;
   const totalBalance = perpEquity > 0 ? perpEquity : spotUsdcBalance;     // Portfolio Value
   const totalMarginUsed = account ? parseFloat(account.totalMarginUsed) || 0 : 0;
-  // "Available to Trade" = free collateral = accountValue − margin used.
-  // (`withdrawable` is ~0 on a unified account with open positions, so it is NOT
-  // the buying power — accountValue − marginUsed is what HL shows.)
+  // "Available to Trade" = free collateral. Take the largest valid measure so we
+  // never under-report when funds exist: accountValue − marginUsed, withdrawable,
+  // or spot USDC. (`withdrawable` is ~0 on a unified account with open positions.)
   const freeCollateral = Math.max(0, perpEquity - totalMarginUsed);
-  const availableBalance = account ? Math.max(freeCollateral, withdrawable) : spotUsdcBalance;
+  const availableBalance = Math.max(freeCollateral, withdrawable, spotUsdcBalance);
   const balanceInSpotOnly = perpEquity === 0 && spotUsdcBalance > 0;
 
   return {

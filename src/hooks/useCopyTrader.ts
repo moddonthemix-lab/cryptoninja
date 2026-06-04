@@ -73,7 +73,7 @@ export function useCopyTrader() {
         else { const weight = targetEquity > 0 ? tp.positionValue / targetEquity : 0; marginUsd = (weight * myEquity) / leverage; }
         marginUsd = Math.min(marginUsd, cfg.maxMarginPerTrade, available);
 
-        if (available <= 0) { log(`Skip ${sym}: no available margin ($${available.toFixed(2)} free)`, "error"); continue; }
+        if (available <= 0) { log(`Skip ${sym}: no free margin (free $${available.toFixed(2)}, equity $${myEquity.toFixed(2)}). Funds may be tied up in open positions — close some or add USDC.`, "error"); continue; }
 
         let notional = marginUsd * leverage;
         const MIN_NOTIONAL = 10; // Hyperliquid minimum order value
