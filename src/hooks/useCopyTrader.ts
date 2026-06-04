@@ -72,8 +72,21 @@ export function useCopyTrader() {
         else if (cfg.sizingMode === "multiplier") marginUsd = (tp.positionValue * cfg.multiplier) / leverage;
         else { const weight = targetEquity > 0 ? tp.positionValue / targetEquity : 0; marginUsd = (weight * myEquity) / leverage; }
         marginUsd = Math.min(marginUsd, cfg.maxMarginPerTrade, available);
-        const notional = marginUsd * leverage;
-        if (marginUsd <= 0 || notional <= 0) { log(`Skip ${sym}: no funds (avail $${available.toFixed(2)})`, "info"); continue; }
+
+        if (available <= 0) { log(`Skip ${sym}: no available margin ($${available.toFixed(2)} free)`, "error"); continue; }
+
+        let notional = marginUsd * leverage;
+        const MIN_NOTIONAL = 10; // Hyperliquid minimum order value
+        if (notional < MIN_NOTIONAL) {
+          // Bump up to the $10 minimum if there's enough free margin to support it
+          if (available * leverage >= MIN_NOTIONAL) {
+            notional = MIN_NOTIONAL;
+            marginUsd = MIN_NOTIONAL / leverage;
+          } else {
+            log(`Skip ${sym}: order ~$${notional.toFixed(2)} < $10 min (free $${available.toFixed(2)} × ${leverage}x). Raise leverage cap or add funds.`, "error");
+            continue;
+          }
+        }
 
         const size = notional / price;
         const id = `${COPY_PREFIX}${sym}`;

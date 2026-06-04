@@ -266,13 +266,16 @@ export function useHyperliquid() {
   }, [assetMeta, tradingMode, submitAction, refreshAccount]);
 
   // Hyperliquid Unified Account: clearinghouseState.accountValue is the full
-  // Portfolio Value (perps + spot + all dexes as unified collateral), and
-  // `withdrawable` is the Available to Trade. Do NOT add spot/xyz separately —
-  // that double-counts under a unified account.
+  // Portfolio Value (perps + spot + all dexes as unified collateral). Do NOT add
+  // spot/xyz separately — that double-counts under a unified account.
   const perpEquity = account ? parseFloat(account.accountValue) : 0;
   const totalBalance = perpEquity > 0 ? perpEquity : spotUsdcBalance;     // Portfolio Value
-  const availableBalance = account ? withdrawable : spotUsdcBalance;       // Available to Trade
   const totalMarginUsed = account ? parseFloat(account.totalMarginUsed) || 0 : 0;
+  // "Available to Trade" = free collateral = accountValue − margin used.
+  // (`withdrawable` is ~0 on a unified account with open positions, so it is NOT
+  // the buying power — accountValue − marginUsed is what HL shows.)
+  const freeCollateral = Math.max(0, perpEquity - totalMarginUsed);
+  const availableBalance = account ? Math.max(freeCollateral, withdrawable) : spotUsdcBalance;
   const balanceInSpotOnly = perpEquity === 0 && spotUsdcBalance > 0;
 
   return {
