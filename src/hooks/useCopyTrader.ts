@@ -118,10 +118,13 @@ export function useCopyTrader() {
               body: JSON.stringify({ action: { type: "updateLeverage", asset: info.assetId, isCross: true, leverage: Math.min(leverage, info.maxLeverage) } }) });
             const isBuy = direction === "long";
             const limitPx = isBuy ? price * 1.01 : price * 0.99;
+            // Field order MUST match the working path: { type, orders, grouping }.
+            // Hyperliquid hashes the msgpack of the action; wrong key order →
+            // wrong action hash → signature recovers to a non-existent address.
             const orderRes = await fetch("/api/hl/trade", { method: "POST", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ action: { type: "order", grouping: "na", orders: [{
+              body: JSON.stringify({ action: { type: "order", orders: [{
                 a: info.assetId, b: isBuy, p: priceToWire(limitPx, info.szDecimals), s: sizeToWire(size, info.szDecimals), r: false, t: { limit: { tif: "Ioc" } },
-              }] } }) });
+              }], grouping: "na" } }) });
             const od = await orderRes.json();
             if (od.error) throw new Error(od.error);
           }
