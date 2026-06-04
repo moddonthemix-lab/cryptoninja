@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useStore } from "@/store/useStore";
 import { useHyperliquid } from "@/hooks/useHyperliquid";
 import { cn } from "@/lib/utils";
-import { RefreshCw, TrendingUp, TrendingDown, Wallet, BarChart3, Percent, Trophy, ChevronLeft, ChevronRight } from "lucide-react";
+import { RefreshCw, TrendingUp, TrendingDown, Wallet, BarChart3, Percent, Trophy, ChevronLeft, ChevronRight, Send } from "lucide-react";
 
 interface DayAgg { date: string; pnl: number; wins: number; losses: number; volume: number; fees: number; trades: number; }
 interface PortfolioData {
@@ -28,6 +28,23 @@ export function PortfolioContent() {
   const [loading, setLoading] = useState(true);
   const [range, setRange] = useState<Range>("30D");
   const [calMonth, setCalMonth] = useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() }; });
+  const [tgState, setTgState] = useState<"idle" | "sending" | "sent" | "error">("idle");
+
+  const sendTest = async () => {
+    setTgState("sending");
+    try {
+      const res = await fetch("/api/telegram/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: "🥷 <b>CryptoNinja test alert</b>\nTelegram is connected — you'll get entries, exits, daily PnL, and the noon report here." }),
+      });
+      const d = await res.json();
+      setTgState(d.ok ? "sent" : "error");
+    } catch {
+      setTgState("error");
+    }
+    setTimeout(() => setTgState("idle"), 3000);
+  };
 
   const load = async () => {
     setLoading(true);
@@ -81,9 +98,24 @@ export function PortfolioContent() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-ninja-text">Portfolio <span className="text-xs px-2 py-0.5 rounded bg-green-500/20 text-green-400 align-middle">LIVE</span></h1>
-        <button onClick={load} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-ninja-card border border-ninja-border text-ninja-muted hover:text-ninja-text text-sm transition-colors">
-          <RefreshCw size={13} className={loading ? "animate-spin" : ""} /> Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={sendTest}
+            disabled={tgState === "sending"}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm transition-colors",
+              tgState === "sent" ? "border-green-500/40 text-green-400 bg-green-500/10"
+              : tgState === "error" ? "border-red-500/40 text-red-400 bg-red-500/10"
+              : "bg-ninja-card border-ninja-border text-ninja-muted hover:text-ninja-text"
+            )}
+          >
+            <Send size={13} />
+            {tgState === "sending" ? "Sending…" : tgState === "sent" ? "Sent ✓" : tgState === "error" ? "Not configured" : "Test Telegram"}
+          </button>
+          <button onClick={load} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-ninja-card border border-ninja-border text-ninja-muted hover:text-ninja-text text-sm transition-colors">
+            <RefreshCw size={13} className={loading ? "animate-spin" : ""} /> Refresh
+          </button>
+        </div>
       </div>
 
       {/* Stat cards */}
