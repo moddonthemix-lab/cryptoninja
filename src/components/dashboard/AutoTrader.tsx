@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useStore } from "@/store/useStore";
 import { useAutoTrader } from "@/hooks/useAutoTrader";
 import { cn } from "@/lib/utils";
-import { Zap, TrendingUp, TrendingDown, AlertTriangle, Activity, Lock, Send, Gauge } from "lucide-react";
+import { Zap, TrendingUp, TrendingDown, AlertTriangle, Activity, Lock, Send, Gauge, RotateCcw } from "lucide-react";
 
 const STATE_LABEL: Record<string, string> = {
   idle: "Waiting for signal",
@@ -34,7 +34,7 @@ export function AutoTrader() {
     autoTradeEnabled, toggleAutoTrade,
     autoTradeLeverage, setAutoTradeLeverage,
     selectedAsset, tradingMode, setTradingMode, emergencyStop,
-    openPositions, paperBalance, getTradesToday,
+    openPositions, paperBalance, getTradesToday, resetAutoTradeCount,
   } = useStore();
 
   const status = useAutoTrader(selectedAsset);
@@ -147,6 +147,19 @@ export function AutoTrader() {
           <span className={cn("font-mono font-bold", tradesToday >= MAX_TRADES ? "text-yellow-400" : "text-ninja-text")}>
             {tradesToday}/{MAX_TRADES}
           </span>
+          <button
+            onClick={resetAutoTradeCount}
+            disabled={tradesToday === 0}
+            title="Reset today's trade count"
+            className={cn(
+              "p-1 rounded-md transition-colors",
+              tradesToday === 0
+                ? "text-ninja-muted/30 cursor-not-allowed"
+                : "text-ninja-muted hover:text-ninja-accent hover:bg-ninja-border/40"
+            )}
+          >
+            <RotateCcw size={12} />
+          </button>
         </div>
       </div>
 

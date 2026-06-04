@@ -63,6 +63,7 @@ interface AppState {
   setAutoTradeLeverage: (n: number) => void;
   recordAutoTrade: () => void;
   getTradesToday: () => number;
+  resetAutoTradeCount: () => void;
   triggerEmergencyStop: () => void;
   clearEmergencyStop: () => void;
   setPaperBalance: (balance: number) => void;
@@ -159,16 +160,23 @@ export const useStore = create<AppState>()(
       toggleAI: () => set((s) => ({ aiEnabled: !s.aiEnabled })),
       toggleAutoTrade: () => set((s) => ({ autoTradeEnabled: !s.autoTradeEnabled })),
       setAutoTradeLeverage: (n) => set({ autoTradeLeverage: n }),
+      // Use LOCAL calendar date (en-CA → YYYY-MM-DD) so the daily cap resets at
+      // the user's local midnight, not UTC midnight.
       recordAutoTrade: () => set((s) => {
-        const today = new Date().toISOString().slice(0, 10);
+        const today = new Date().toLocaleDateString("en-CA");
         const count = s.autoTradeDate === today ? s.autoTradeCount + 1 : 1;
         return { autoTradeCount: count, autoTradeDate: today, autoTradeLastTs: Date.now() };
       }),
       getTradesToday: () => {
         const s = get();
-        const today = new Date().toISOString().slice(0, 10);
+        const today = new Date().toLocaleDateString("en-CA");
         return s.autoTradeDate === today ? s.autoTradeCount : 0;
       },
+      resetAutoTradeCount: () => set({
+        autoTradeCount: 0,
+        autoTradeDate: new Date().toLocaleDateString("en-CA"),
+        autoTradeLastTs: 0,
+      }),
       triggerEmergencyStop: () => set({ emergencyStop: true, autoTradeEnabled: false, activeStrategyId: null }),
       clearEmergencyStop: () => set({ emergencyStop: false }),
       setPaperBalance: (balance) => set({ paperBalance: balance }),

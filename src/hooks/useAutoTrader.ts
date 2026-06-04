@@ -286,7 +286,7 @@ export function useAutoTrader(asset: Asset) {
     // ── Daily trade cap — stop calling the API entirely once hit ──
     const tradesToday = store.getTradesToday();
     if (tradesToday >= MAX_TRADES_PER_DAY) {
-      setStatus((s) => ({ ...s, state: "idle", lastSignal: `Daily limit reached (${MAX_TRADES_PER_DAY} trades). Resets at UTC midnight.` }));
+      setStatus((s) => ({ ...s, state: "idle", lastSignal: `Daily limit reached (${MAX_TRADES_PER_DAY} trades). Resets at midnight, or tap reset.` }));
       return;
     }
 
