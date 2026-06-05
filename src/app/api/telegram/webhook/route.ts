@@ -27,11 +27,13 @@ async function freeMargin(master: string): Promise<number> {
 
 async function openPositions(master: string) {
   const [main, xyz] = await Promise.all([getUserState(master), getUserStateDex(master, "xyz").catch(() => null)]);
-  const out: Array<{ coin: string; szi: number; entryPx: number; upnl: number }> = [];
+  const out: Array<{ coin: string; szi: number; entryPx: number; upnl: number; mark: number }> = [];
   const collect = (st: any, dex: "" | "xyz") => ((st?.assetPositions) || []).forEach((ap: any) => {
     const p = ap.position; const szi = parseFloat(p.szi); if (!szi) return;
     const coin = dex === "xyz" && !String(p.coin).startsWith("xyz:") ? `xyz:${p.coin}` : p.coin;
-    out.push({ coin, szi, entryPx: parseFloat(p.entryPx), upnl: parseFloat(p.unrealizedPnl || "0") });
+    const posVal = parseFloat(p.positionValue || "0") || 0;
+    const mark = Math.abs(szi) > 0 && posVal > 0 ? posVal / Math.abs(szi) : parseFloat(p.entryPx);
+    out.push({ coin, szi, entryPx: parseFloat(p.entryPx), upnl: parseFloat(p.unrealizedPnl || "0"), mark });
   });
   collect(main, ""); collect(xyz, "xyz");
   return out;
@@ -120,19 +122,22 @@ export async function POST(req: NextRequest) {
       const positions = await openPositions(master);
       if (!positions.length) { await tg(token, chatId, "No open positions to close."); return NextResponse.json({ ok: true }); }
 
-      const mids = await getAllMids();
       for (const p of positions) {
-        const info = metaByCoin[p.coin]; if (!info) continue;
+        const info = metaByCoin[p.coin]; if (!info) { await tg(token, chatId, `⚠️ No meta for ${p.coin}`); continue; }
         const isLong = p.szi > 0;
-        const px = parseFloat(mids[p.coin.replace(/^xyz:/, "")] || String(p.entryPx)) || p.entryPx;
         const closeBuy = !isLong; // close long = sell, close short = buy
-        const limitPx = closeBuy ? px * 1.01 : px * 0.99;
-        const od: any = await submitWithAgent(buildOrderAction(info.assetId, closeBuy, limitPx, Math.abs(p.szi), true, "Ioc", info.szDecimals), master);
+        // Bias 3% past the mark so the reduce-only IOC definitely fills
+        const limitPx = closeBuy ? p.mark * 1.03 : p.mark * 0.97;
         const sym = p.coin.replace(/^xyz:/, "");
-        if (od?.status === "ok") {
-          await tg(token, chatId, `🟦 <b>CLOSED ${isLong ? "LONG" : "SHORT"} ${sym}</b> @ ~$${px.toFixed(2)}\nPnL: <b>${p.upnl >= 0 ? "+" : "-"}$${Math.abs(p.upnl).toFixed(2)}</b>`);
+        const od: any = await submitWithAgent(
+          buildOrderAction(info.assetId, closeBuy, limitPx, Math.abs(p.szi), true, "Ioc", info.szDecimals), master
+        );
+        const st = od?.response?.data?.statuses?.[0];
+        const errMsg = od?.status !== "ok" ? (typeof od?.response === "string" ? od.response : JSON.stringify(od?.response ?? od)) : (st?.error || null);
+        if (!errMsg) {
+          await tg(token, chatId, `🟦 <b>CLOSED ${isLong ? "LONG" : "SHORT"} ${sym}</b> @ ~$${p.mark.toFixed(p.mark < 1 ? 5 : 2)}\nPnL: <b>${p.upnl >= 0 ? "+" : "-"}$${Math.abs(p.upnl).toFixed(2)}</b>`);
         } else {
-          await tg(token, chatId, `❌ Close ${sym} failed: ${od?.response ?? od?.error ?? "unknown"}`);
+          await tg(token, chatId, `❌ Close ${sym} failed: ${errMsg}`);
         }
       }
       return NextResponse.json({ ok: true });
