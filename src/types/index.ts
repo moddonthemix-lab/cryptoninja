@@ -75,6 +75,13 @@ export const ASSETS: Record<string, AssetConfig> = {
   CRCL:  mk("CRCL", "Circle", "#4ade80", "C", "stock", "xyz", "NYSE:CRCL"),
   HOOD:  mk("HOOD", "Robinhood", "#00c805", "H", "stock", "xyz", "NASDAQ:HOOD"),
   NFLX:  mk("NFLX", "Netflix", "#e50914", "N", "stock", "xyz", "NASDAQ:NFLX"),
+  BB:    mk("BB", "BlackBerry", "#000000", "B", "stock", "xyz", "NYSE:BB"),
+  IBM:   mk("IBM", "IBM", "#0530ad", "I", "stock", "xyz", "NYSE:IBM"),
+  HIMS:  mk("HIMS", "Hims & Hers", "#2e2e57", "H", "stock", "xyz", "NYSE:HIMS"),
+  RKLB:  mk("RKLB", "Rocket Lab", "#1a1a1a", "R", "stock", "xyz", "NASDAQ:RKLB"),
+  EBAY:  mk("EBAY", "eBay", "#e53238", "e", "stock", "xyz", "NASDAQ:EBAY"),
+  DELL:  mk("DELL", "Dell", "#007db8", "D", "stock", "xyz", "NYSE:DELL"),
+  NOW:   mk("NOW", "ServiceNow", "#62d84e", "N", "stock", "xyz", "NYSE:NOW"),
   // ── Commodities (xyz dex) ──
   GOLD:     mk("GOLD", "Gold", "#ffd700", "Au", "commodity", "xyz", "OANDA:XAUUSD"),
   SILVER:   mk("SILVER", "Silver", "#c0c0c0", "Ag", "commodity", "xyz", "OANDA:XAGUSD"),
