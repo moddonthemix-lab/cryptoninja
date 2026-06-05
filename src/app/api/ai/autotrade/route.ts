@@ -564,16 +564,40 @@ Confidence drivers: FTFC agrees with break (+20) / conflicts (-15); intraday + G
     let vetoed = false;
     let vetoReason = "";
 
+    // ── Take-profit snapped to STRUCTURE (Goldbach target → else next TheStrat
+    //    key level). The stop-loss + trailing are unchanged (−23% then ratchet). ──
+    let tpTarget: number | null = null;
+    let tpSource: "goldbach" | "strat" | "momentum" = "momentum";
+    if (gbTpLevel && ((direction === "long" && gbTpLevel > currentPrice) || (direction === "short" && gbTpLevel < currentPrice))) {
+      tpTarget = gbTpLevel; tpSource = "goldbach";
+    } else {
+      const stratLvl = direction === "long" ? priorWeekHigh : priorWeekLow;
+      if ((direction === "long" && stratLvl > currentPrice) || (direction === "short" && stratLvl < currentPrice)) {
+        tpTarget = stratLvl; tpSource = "strat";
+      }
+    }
+    if (tpTarget != null) {
+      const gbName = Object.entries(gbMain).find(([, v]) => v === gbTpLevel)?.[0];
+      reasoning += ` TP → ${tpSource === "goldbach" ? `Goldbach ${gbName ?? "target"}` : `prior-week ${direction === "long" ? "high" : "low"}`} $${tpTarget.toFixed(2)}.`;
+    }
+
     const buildPayload = () => {
       const slPricePct = 0.23 / leverage;
       const tpPricePct = tpPct / 100 / leverage;
+      const tp = tpTarget != null
+        ? tpTarget
+        : (direction === "long" ? currentPrice * (1 + tpPricePct) : currentPrice * (1 - tpPricePct));
+      // Effective TP % (of margin) implied by the structural target, for display
+      const tpPctEff = tpTarget != null
+        ? Math.round((Math.abs(tpTarget - currentPrice) / currentPrice) * 100 * leverage)
+        : tpPct;
       return {
         shouldTrade: !vetoed, direction, leverage,
-        confidence, tpPct, slPct: 23, isSwing, aiUsed,
+        confidence, tpPct: tpPctEff, slPct: 23, isSwing, aiUsed, tpSource,
         reason: vetoed ? vetoReason : undefined,
         entry: currentPrice,
         sl: direction === "long" ? currentPrice * (1 - slPricePct) : currentPrice * (1 + slPricePct),
-        tp: direction === "long" ? currentPrice * (1 + tpPricePct) : currentPrice * (1 - tpPricePct),
+        tp,
         reasoning, trailTriggerPct, trailRetreatPct,
         ftfc: assetFTFC, weeklyDir, dailyDir, h4Dir, h1Dir,
         dailyBarType, h4BarType, h1BarType, btcFTFC, btcAgreesWithAsset, btcConflicts,

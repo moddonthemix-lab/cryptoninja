@@ -350,18 +350,33 @@ export function useAutoTrader(asset: Asset) {
       );
 
       // ── Risk sizing: use 30–50% of available funds as margin, scaled by
-      //    confidence (65% → 30%, 100% → 50%) ──
+      //    confidence (60% → 30%, 100% → 50%) ──
       const riskPct = 0.30 + Math.min(1, Math.max(0, (confidence - MIN_CONFIDENCE) / (100 - MIN_CONFIDENCE))) * 0.20;
-      const available = tradingMode === "live"
-        ? (hl.availableBalance || 0)
-        : useStore.getState().paperBalance;
+      // Read real buying power straight from the account endpoint (the hook's
+      // state may not be loaded in this component → false $0).
+      let available: number;
+      if (tradingMode === "live") {
+        try {
+          const acc = await (await fetch("/api/hl/account")).json();
+          const cms = acc?.state?.crossMarginSummary;
+          const av = parseFloat(cms?.accountValue ?? "0") || 0;
+          const mu = parseFloat(cms?.totalMarginUsed ?? "0") || 0;
+          const wd = parseFloat(acc?.state?.withdrawable ?? "0") || 0;
+          const spot = acc?.spotUsdcBalance || 0;
+          available = Math.max(av - mu, wd, spot, hl.availableBalance || 0);
+        } catch { available = hl.availableBalance || 0; }
+      } else {
+        available = useStore.getState().paperBalance;
+      }
       const marginToUse = available * riskPct;
-      const positionUsd = marginToUse * autoTradeLeverage; // notional
+      let positionUsd = marginToUse * autoTradeLeverage; // notional
+      // Honor Hyperliquid's $10 minimum order when there's margin to support it
+      if (tradingMode === "live" && positionUsd < 10 && available * autoTradeLeverage >= 10) positionUsd = 10;
       const size = positionUsd / entry;
       const posId = `auto_${Date.now()}`;
 
       if (available <= 0 || positionUsd <= 0) {
-        addLog(`No available funds to size a trade (avail $${available.toFixed(2)})`, "error");
+        addLog(`No available funds to size a trade (free $${available.toFixed(2)})`, "error");
         setStatus((s) => ({ ...s, state: "idle" }));
         return;
       }
