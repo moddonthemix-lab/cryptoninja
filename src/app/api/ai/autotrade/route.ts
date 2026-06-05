@@ -452,9 +452,15 @@ export async function POST(req: NextRequest) {
       const reason = (pendingBull || pendingBear)
         ? `Break forming — waiting on 15m confirmation (bull=${pendingBull}, bear=${pendingBear})`
         : `No clean structural break (bull=${bullBreak}, bear=${bearBreak})`;
+      // Show the live score even with no break so the panel keeps "scoring"
+      const previewConfidence = Math.max(0, Math.min(100,
+        confidenceBreakdown.reduce((s, f) => s + (f.active ? f.points : 0), 0)));
       return NextResponse.json({
         shouldTrade: false,
         reason,
+        confidence: previewConfidence,
+        direction: bhDetectedDir === "bearish" ? "short" : "long",
+        confidenceBreakdown,
         ftfc: assetFTFC, weeklyDir, dailyDir, h4Dir, h1Dir, breakDir, whichBreak,
         priorDayHigh: priorDay.high, priorDayLow: priorDay.low,
         priorH4High: priorH4.high, priorH4Low: priorH4.low,

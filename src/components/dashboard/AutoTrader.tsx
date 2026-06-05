@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useStore } from "@/store/useStore";
-import { useAutoTrader } from "@/hooks/useAutoTrader";
+import { useAutoTraderStatus } from "./AutoTraderProvider";
+import type { AutoTraderStatus } from "@/hooks/useAutoTrader";
 import { cn } from "@/lib/utils";
 import { Zap, TrendingUp, TrendingDown, AlertTriangle, Activity, Lock, Send, Gauge, RotateCcw } from "lucide-react";
 
@@ -38,7 +39,11 @@ export function AutoTrader() {
     learningEnabled, toggleLearning,
   } = useStore();
 
-  const status = useAutoTrader(selectedAsset);
+  const status: AutoTraderStatus = useAutoTraderStatus() ?? {
+    state: "idle", lastSignal: null, lastScanTime: null, currentPnlPct: null,
+    peakPnlPct: null, trailActive: false, lockedPct: 0, lastConfidence: null,
+    lastBreakdown: null, lastBreakdownDir: null, log: [],
+  };
   const activePos = openPositions.find((p) => p.isOpen && p.asset === selectedAsset);
   const isLive = tradingMode === "live";
   const tradesToday = getTradesToday();
