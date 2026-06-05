@@ -81,13 +81,20 @@ export interface HLOrderRequest {
 // ─── Info API (no auth required) ─────────────────────────────────────────────
 
 async function infoPost<T>(body: object): Promise<T> {
-  const res = await fetch(`${HL_API}/info`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(`Hyperliquid info error: ${res.status}`);
-  return res.json();
+  let lastStatus = 0;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const res = await fetch(`${HL_API}/info`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (res.ok) return res.json();
+    lastStatus = res.status;
+    // Back off and retry on rate limit / transient errors
+    if (res.status === 429 || res.status >= 500) await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+    else break;
+  }
+  throw new Error(`Hyperliquid info error: ${lastStatus}`);
 }
 
 // Get all perpetuals metadata

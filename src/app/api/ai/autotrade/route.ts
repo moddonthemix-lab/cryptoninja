@@ -24,7 +24,7 @@ type FTFCResult = "bullish" | "bearish" | "mixed";
 
 // Short-lived candle cache so repeated scans (esp. BTC, fetched every scan)
 // don't hammer Hyperliquid and trip the 429 rate limiter.
-const CANDLE_TTL_MS = 45_000;
+const CANDLE_TTL_MS = 90_000;
 const candleCache = new Map<string, { ts: number; candles: Candle[] }>();
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 

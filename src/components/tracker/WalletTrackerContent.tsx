@@ -55,7 +55,7 @@ function WalletCard({ address, label, onRemove, tradable }: { address: string; l
 
   useEffect(() => {
     load();
-    const id = setInterval(load, 30000);
+    const id = setInterval(load, 45000);
     return () => clearInterval(id);
   }, [load]);
 

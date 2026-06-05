@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import { useStore } from "@/store/useStore";
 import { notify } from "@/lib/notify";
 
-const POLL_MS = 40_000; // poll tracked wallets every 40s (app-wide, all pages)
+const POLL_MS = 60_000; // poll tracked wallets every 60s (app-wide, all pages)
 const symOf = (coin: string) => coin.replace(/^xyz:/, "");
 
 interface TraderPos {

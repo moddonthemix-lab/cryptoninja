@@ -27,8 +27,21 @@ function openTimesFromFills(fills: any[]): Record<string, number> {
 
 // Read-only snapshot of any trader's open positions + account value, used by the
 // copy-trading tab to preview a target and by the mirror engine to replicate.
-const CACHE_TTL_MS = 10_000;
+const CACHE_TTL_MS = 20_000;
 const cache = new Map<string, { ts: number; payload: any }>();
+// Open-times come from userFills (a heavy call) — cache them far longer so we
+// don't re-pull full fill history on every poll.
+const OPEN_TTL_MS = 5 * 60_000;
+const openCache = new Map<string, { ts: number; openAt: Record<string, number> }>();
+
+async function getOpenTimes(address: string): Promise<Record<string, number>> {
+  const hit = openCache.get(address);
+  if (hit && Date.now() - hit.ts < OPEN_TTL_MS) return hit.openAt;
+  const fills = await getUserFills(address).catch(() => []);
+  const openAt = openTimesFromFills(Array.isArray(fills) ? fills : []);
+  openCache.set(address, { ts: Date.now(), openAt });
+  return openAt;
+}
 
 export async function GET(req: NextRequest) {
   const address = new URL(req.url).searchParams.get("address")?.trim().toLowerCase();
@@ -40,13 +53,11 @@ export async function GET(req: NextRequest) {
   if (hit && Date.now() - hit.ts < CACHE_TTL_MS) return NextResponse.json(hit.payload);
 
   try {
-    const [main, xyz, fills] = await Promise.all([
+    const [main, xyz, openAt] = await Promise.all([
       getUserState(address),
       getUserStateDex(address, "xyz").catch(() => null),
-      getUserFills(address).catch(() => []),
+      getOpenTimes(address),
     ]);
-
-    const openAt = openTimesFromFills(Array.isArray(fills) ? fills : []);
 
     const mapPos = (ap: any, dex: "" | "xyz") => {
       const p = ap.position;
@@ -75,6 +86,7 @@ export async function GET(req: NextRequest) {
     cache.set(address, { ts: Date.now(), payload });
     return NextResponse.json(payload);
   } catch (e: any) {
+    if (hit) return NextResponse.json({ ...hit.payload, stale: true });
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
 }
