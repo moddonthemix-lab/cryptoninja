@@ -33,6 +33,7 @@ interface AppState {
   // Auto trader
   autoTradeEnabled: boolean;
   autoTradeLeverage: number;
+  botAsset: Asset;            // the single ticker the bot watches/trades
   learningEnabled: boolean;   // feed recent trade outcomes back to the AI
   autoTradeCount: number;      // trades opened today
   autoTradeDate: string;       // YYYY-MM-DD the count belongs to
@@ -91,6 +92,7 @@ interface AppState {
   toggleAutoTrade: () => void;
   setAutoTradeLeverage: (n: number) => void;
   toggleLearning: () => void;
+  setBotAsset: (asset: Asset) => void;
   recordAutoTrade: () => void;
   getTradesToday: () => number;
   resetAutoTradeCount: () => void;
@@ -129,6 +131,7 @@ export const useStore = create<AppState>()(
       aiEnabled: true,
       autoTradeEnabled: false,
       autoTradeLeverage: 3,
+      botAsset: "BTC",
       learningEnabled: true,
       autoTradeCount: 0,
       autoTradeDate: "",
@@ -226,6 +229,7 @@ export const useStore = create<AppState>()(
       toggleAutoTrade: () => set((s) => ({ autoTradeEnabled: !s.autoTradeEnabled })),
       setAutoTradeLeverage: (n) => set({ autoTradeLeverage: n }),
       toggleLearning: () => set((s) => ({ learningEnabled: !s.learningEnabled })),
+      setBotAsset: (asset) => set({ botAsset: asset }),
       // Use LOCAL calendar date (en-CA → YYYY-MM-DD) so the daily cap resets at
       // the user's local midnight, not UTC midnight.
       recordAutoTrade: () => set((s) => {
@@ -273,6 +277,7 @@ export const useStore = create<AppState>()(
         paperBalance: state.paperBalance,
         autoTradeLeverage: state.autoTradeLeverage,
         autoTradeEnabled: state.autoTradeEnabled,
+        botAsset: state.botAsset,
         learningEnabled: state.learningEnabled,
         autoTradeCount: state.autoTradeCount,
         autoTradeDate: state.autoTradeDate,

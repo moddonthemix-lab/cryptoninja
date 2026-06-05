@@ -15,8 +15,8 @@ export function useAutoTraderStatus(): AutoTraderStatus | null {
 }
 
 export function AutoTraderProvider({ children }: { children: React.ReactNode }) {
-  const selectedAsset = useStore((s) => s.selectedAsset);
-  const status = useAutoTrader(selectedAsset);
+  const botAsset = useStore((s) => s.botAsset);
+  const status = useAutoTrader(botAsset);
 
   // Heartbeat so the server cron defers to this browser while it's open.
   useEffect(() => {

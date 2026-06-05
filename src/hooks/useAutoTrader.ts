@@ -9,11 +9,21 @@ import { notify } from "@/lib/notify";
 import { lockTarget, trailMeta } from "@/lib/trailing";
 import type { Asset } from "@/types";
 
-// Sum of today's realized PnL from closed trades (for daily alerts)
-function todaysRealized(): number {
-  const today = new Date().toISOString().slice(0, 10);
+// Start of the user's LOCAL day, in ms
+function localDayStart(): number { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); }
+
+// Correct "today's total" realized PnL: live → Hyperliquid fills since local
+// midnight (net of fees); paper → store trades closed since local midnight.
+async function realizedToday(live: boolean): Promise<number> {
+  const start = localDayStart();
+  if (live) {
+    try {
+      const d = await (await fetch(`/api/hl/today?since=${start}`)).json();
+      return typeof d.realized === "number" ? d.realized : 0;
+    } catch { return 0; }
+  }
   return useStore.getState().closedTrades
-    .filter((t) => (t.closedAt ?? "").slice(0, 10) === today)
+    .filter((t) => t.closedAt && new Date(t.closedAt).getTime() >= start)
     .reduce((s, t) => s + (t.pnl ?? 0), 0);
 }
 const fmt = (n: number) => `${n >= 0 ? "+" : "-"}$${Math.abs(n).toFixed(2)}`;
@@ -126,18 +136,23 @@ export function useAutoTrader(asset: Asset) {
         } catch { /* best effort — app-side close still protects the lock */ }
       };
 
-      // Telegram alert on exit (call AFTER closePosition so daily total is fresh)
+      // Telegram alert on exit. Fetch today's total AFTER the close settles so
+      // the figure is correct (live: HL fills; paper: store).
       const alertExit = (pos: typeof allPositions[number], price: number, reason: "TP" | "SL" | "TRAIL", pnlPct: number) => {
         const margin = (pos.size * pos.entryPrice) / pos.leverage;
         const pnlUsd = margin * (pnlPct / 100);
-        const daily = todaysRealized();
         const emoji = reason === "SL" ? "🔴" : "🟢";
-        notify(
-          `${emoji} <b>${reason} EXIT</b> · ${liveMode ? "LIVE" : "PAPER"}\n` +
-          `${pos.direction.toUpperCase()} <b>${pos.asset}</b> closed @ $${price.toFixed(4)}\n` +
-          `Trade PnL: <b>${fmt(pnlUsd)}</b> (${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(1)}%)\n` +
-          `Today's total: <b>${fmt(daily)}</b>`
-        );
+        // give the fill ~1.5s to land in HL's history, then read the real total
+        setTimeout(() => {
+          realizedToday(liveMode).then((daily) => {
+            notify(
+              `${emoji} <b>${reason} EXIT</b> · ${liveMode ? "LIVE" : "PAPER"}\n` +
+              `${pos.direction.toUpperCase()} <b>${pos.asset}</b> closed @ $${price.toFixed(4)}\n` +
+              `Trade PnL: <b>${fmt(pnlUsd)}</b> (${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(1)}%)\n` +
+              `Today's total: <b>${fmt(daily)}</b>`
+            );
+          });
+        }, 1500);
       };
 
       for (const pos of allPositions) {
@@ -247,16 +262,17 @@ export function useAutoTrader(asset: Asset) {
       if (localStorage.getItem("cn_daily_report") === today) return;
       localStorage.setItem("cn_daily_report", today);
 
-      const daily = todaysRealized();
       const equity = hlRef.current.totalBalance || 0;
       const openCount = useStore.getState().openPositions.filter((p) => p.isOpen).length;
       const live = useStore.getState().tradingMode === "live";
-      notify(
-        `📊 <b>Daily Report</b> — ${today}\n` +
-        (live && equity > 0 ? `Account equity: <b>$${equity.toFixed(2)}</b>\n` : "") +
-        `Realized today: <b>${fmt(daily)}</b>\n` +
-        `Open positions: ${openCount}`
-      );
+      realizedToday(live).then((daily) => {
+        notify(
+          `📊 <b>Daily Report</b> — ${today}\n` +
+          (live && equity > 0 ? `Account equity: <b>$${equity.toFixed(2)}</b>\n` : "") +
+          `Realized today: <b>${fmt(daily)}</b>\n` +
+          `Open positions: ${openCount}`
+        );
+      });
     };
     const id = setInterval(check, 60_000);
     check();

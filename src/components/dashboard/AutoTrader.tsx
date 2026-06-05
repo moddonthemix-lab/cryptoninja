@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useStore } from "@/store/useStore";
 import { useAutoTraderStatus } from "./AutoTraderProvider";
 import type { AutoTraderStatus } from "@/hooks/useAutoTrader";
+import { ASSETS } from "@/types";
 import { cn } from "@/lib/utils";
 import { Zap, TrendingUp, TrendingDown, AlertTriangle, Activity, Lock, Send, Gauge, RotateCcw } from "lucide-react";
 
@@ -34,7 +35,7 @@ export function AutoTrader() {
   const {
     autoTradeEnabled, toggleAutoTrade,
     autoTradeLeverage, setAutoTradeLeverage,
-    selectedAsset, tradingMode, setTradingMode, emergencyStop,
+    botAsset, setBotAsset, tradingMode, setTradingMode, emergencyStop,
     openPositions, paperBalance, getTradesToday, resetAutoTradeCount,
     learningEnabled, toggleLearning,
   } = useStore();
@@ -44,10 +45,19 @@ export function AutoTrader() {
     peakPnlPct: null, trailActive: false, lockedPct: 0, lastConfidence: null,
     lastBreakdown: null, lastBreakdownDir: null, log: [],
   };
-  const activePos = openPositions.find((p) => p.isOpen && p.asset === selectedAsset);
+  const activePos = openPositions.find((p) => p.isOpen && p.asset === botAsset);
   const isLive = tradingMode === "live";
   const tradesToday = getTradesToday();
   const MAX_TRADES = 5;
+
+  // Ticker the bot watches (default BTC) — typed input, validated against registry
+  const [tickerInput, setTickerInput] = useState(botAsset);
+  useEffect(() => { setTickerInput(botAsset); }, [botAsset]);
+  const applyTicker = () => {
+    const sym = tickerInput.trim().toUpperCase();
+    if (ASSETS[sym]) setBotAsset(sym);
+    else setTickerInput(botAsset); // revert invalid
+  };
 
   // Telegram alert connection status
   const [tgConfigured, setTgConfigured] = useState<boolean | null>(null);
@@ -116,6 +126,32 @@ export function AutoTrader() {
         >
           ⚡ Live
         </button>
+      </div>
+
+      {/* Watched ticker — the single asset the bot scans/trades */}
+      <div className="space-y-1">
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-ninja-muted">Watching</span>
+          <span className="text-[10px] text-ninja-muted/60">type a ticker, Enter</span>
+        </div>
+        <div className="flex gap-2">
+          <input
+            value={tickerInput}
+            onChange={(e) => setTickerInput(e.target.value.toUpperCase())}
+            onKeyDown={(e) => e.key === "Enter" && applyTicker()}
+            onBlur={applyTicker}
+            disabled={autoTradeEnabled}
+            placeholder="BTC"
+            className={cn("input font-mono text-sm flex-1 uppercase", autoTradeEnabled && "opacity-60")}
+          />
+          <span className="flex items-center px-2 rounded-lg bg-ninja-bg/50 text-xs font-bold"
+            style={{ color: ASSETS[botAsset]?.color }}>
+            {botAsset}
+          </span>
+        </div>
+        {!ASSETS[tickerInput.trim().toUpperCase()] && tickerInput && (
+          <p className="text-[10px] text-red-400">Unknown ticker — must be one we support</p>
+        )}
       </div>
 
       {emergencyStop && (
@@ -381,7 +417,7 @@ export function AutoTrader() {
       {/* How it works blurb (only when off, paper mode) */}
       {!autoTradeEnabled && !isLive && (
         <p className="text-ninja-muted/70 text-xs leading-relaxed">
-          AI scans {selectedAsset} every minute using TheStrat + Goldbach.
+          AI scans {botAsset} every minute using TheStrat + Goldbach.
           Enters on a fully-bodied 5m/15m break of prior structure.
           Hard SL at −23% margin. TP is dynamic (25–100%) based on momentum.
           Trailing stop locks profit once you're ahead.
