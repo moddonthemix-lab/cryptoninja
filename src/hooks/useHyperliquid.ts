@@ -111,11 +111,13 @@ export function useHyperliquid() {
     return data;
   }, []);
 
-  // Set leverage (must be done before first order on a new asset)
+  // Set leverage (must be done before first order on a new asset).
+  // Stocks/commodities on the xyz dex only allow ISOLATED margin (not cross).
   const setLeverage = useCallback(async (asset: Asset, leverage: number, isCross = true) => {
     const meta = assetMeta[asset];
     if (!meta) throw new Error(`Meta not loaded for ${asset}`);
-    return submitAction(buildSetLeverageAction(meta.assetId, Math.min(leverage, meta.maxLeverage), isCross));
+    const cross = meta.dex === "xyz" ? false : isCross;
+    return submitAction(buildSetLeverageAction(meta.assetId, Math.min(leverage, meta.maxLeverage), cross));
   }, [assetMeta, submitAction]);
 
   // Place a market order by size in USD

@@ -162,7 +162,7 @@ async function handle(req: NextRequest) {
         const size = notional / entry;
         const isBuy = direction === "long";
 
-        await submitWithAgent(buildSetLeverageAction(info.assetId, Math.min(leverage, info.maxLeverage), true), master).catch(() => {});
+        await submitWithAgent(buildSetLeverageAction(info.assetId, Math.min(leverage, info.maxLeverage), info.dex !== "xyz"), master).catch(() => {});
         const limitPx = isBuy ? entry * 1.01 : entry * 0.99;
         const od: any = await submitWithAgent(buildOrderAction(info.assetId, isBuy, limitPx, size, false, "Ioc", info.szDecimals), master);
         if (od?.status !== "ok") { log.push(`${asset} order failed: ${od?.response ?? od?.error ?? "unknown"}`); continue; }

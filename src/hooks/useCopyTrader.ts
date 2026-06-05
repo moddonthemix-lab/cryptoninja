@@ -127,7 +127,7 @@ export function useCopyTrader() {
         try {
           if (live) {
             await fetch("/api/hl/trade", { method: "POST", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ action: { type: "updateLeverage", asset: info.assetId, isCross: true, leverage: Math.min(leverage, info.maxLeverage) } }) });
+              body: JSON.stringify({ action: { type: "updateLeverage", asset: info.assetId, isCross: info.dex !== "xyz", leverage: Math.min(leverage, info.maxLeverage) } }) });
             const isBuy = direction === "long";
             const limitPx = isBuy ? price * 1.01 : price * 0.99;
             // Field order MUST match the working path: { type, orders, grouping }.

@@ -438,11 +438,11 @@ export function useAutoTrader(asset: Asset) {
           const assetInfo = meta[asset];
           if (!assetInfo) throw new Error(`Asset meta not loaded for ${asset}`);
 
-          // 1. Set leverage
+          // 1. Set leverage (xyz dex = stocks/commodities → isolated only)
           const leverageAction = {
             type: "updateLeverage",
             asset: assetInfo.assetId,
-            isCross: true,
+            isCross: assetInfo.dex !== "xyz",
             leverage: Math.min(autoTradeLeverage, assetInfo.maxLeverage),
           };
           await fetch("/api/hl/trade", {
