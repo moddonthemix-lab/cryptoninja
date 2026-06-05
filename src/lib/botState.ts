@@ -9,6 +9,8 @@ export const botState = {
   tradesToday: 0,
   lastTradeTs: 0,
   lastHeartbeat: 0,   // last time an open browser pinged in (for cron handoff)
+  lastCronRun: 0,     // last time the cron actually ran (not deferred)
+  lastOpen: {} as Record<string, { szi: number; entryPx: number }>, // for close detection
   trail: {} as Record<string, ServerTrail>,
 };
 

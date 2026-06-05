@@ -3,7 +3,7 @@ export const maxDuration = 60;
 
 import { NextRequest, NextResponse } from "next/server";
 import {
-  getUserState, getUserStateDex, getFrontendOpenOrders,
+  getUserState, getUserStateDex, getFrontendOpenOrders, getUserFills,
   buildOrderAction, buildSetLeverageAction, buildPositionTpSlAction, buildCancelAction,
 } from "@/lib/hyperliquid";
 import { submitWithAgent, isAgentConfigured } from "@/lib/hl-agent";
@@ -79,6 +79,33 @@ async function handle(req: NextRequest) {
       openByCoin[coin] = { szi, entryPx: parseFloat(p.entryPx), lev: p.leverage?.value ?? leverage, upnl: parseFloat(p.unrealizedPnl || "0") };
     });
     collect(main, ""); collect(xyz, "xyz");
+
+    // ── Exit alerts: detect positions that closed since the last cron run ──
+    const nowTs = Date.now();
+    const gap = nowTs - (botState.lastCronRun || 0);
+    botState.lastCronRun = nowTs;
+    const curr: Record<string, { szi: number; entryPx: number }> = {};
+    for (const [coin, p] of Object.entries(openByCoin)) curr[coin] = { szi: p.szi, entryPx: p.entryPx };
+    if (gap < 5 * 60_000) {
+      const closedCoins = Object.keys(botState.lastOpen).filter((c) => !curr[c]);
+      if (closedCoins.length) {
+        const fills = await getUserFills(master).catch(() => []);
+        const since = nowTs - 20 * 60_000;
+        for (const coin of closedCoins) {
+          const sym = coin.replace(/^xyz:/, "");
+          let pnl = 0;
+          for (const f of (fills as any[])) {
+            if ((f.time ?? 0) < since) continue;
+            if (String(f.coin).replace(/^xyz:/, "") !== sym) continue;
+            const cp = parseFloat(f.closedPnl ?? "0") || 0;
+            if (cp !== 0) pnl += cp - (parseFloat(f.fee ?? "0") || 0);
+          }
+          log.push(`Exit ${sym} PnL ${pnl.toFixed(2)}`);
+          await tg(origin, `${pnl >= 0 ? "🟢" : "🔴"} <b>${pnl >= 0 ? "TP / EXIT" : "SL / EXIT"} ${sym}</b>\nClosed · PnL <b>${pnl >= 0 ? "+" : "-"}$${Math.abs(pnl).toFixed(2)}</b>`);
+        }
+      }
+    }
+    botState.lastOpen = curr;
 
     const cms: any = (main as any)?.crossMarginSummary;
     const accountValue = parseFloat(cms?.accountValue || "0") || 0;

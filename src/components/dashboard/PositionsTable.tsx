@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useStore } from "@/store/useStore";
 import { useHyperliquid } from "@/hooks/useHyperliquid";
 import { cn, timeAgo } from "@/lib/utils";
+import { notify } from "@/lib/notify";
 import { ASSETS } from "@/types";
 import type { Asset } from "@/types";
 import { X, Share2 } from "lucide-react";
@@ -117,6 +118,17 @@ export function PositionsTable() {
       } else {
         closePosition(pos.id, exitPrice, "manual");
       }
+      // Telegram alert on the manual close (sell) with PnL
+      const margin = (pos.size * pos.entryPrice) / pos.leverage;
+      const pnl = pos.isLive
+        ? (pos.unrealizedPnl ?? 0)
+        : (pos.direction === "long" ? exitPrice - pos.entryPrice : pos.entryPrice - exitPrice) * pos.size * pos.leverage;
+      const pnlPct = margin > 0 ? (pnl / margin) * 100 : 0;
+      notify(
+        `🟦 <b>MANUAL CLOSE</b> · ${pos.isLive ? "LIVE" : "PAPER"}\n` +
+        `Sold ${pos.direction.toUpperCase()} <b>${pos.asset}</b> @ $${exitPrice.toFixed(4)}\n` +
+        `PnL: <b>${pnl >= 0 ? "+" : "-"}$${Math.abs(pnl).toFixed(2)}</b> (${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(1)}%)`
+      );
     } catch {
       // error surfaced elsewhere; just clear the closing state
     }

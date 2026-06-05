@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useStore } from "@/store/useStore";
 import { useHyperliquid } from "@/hooks/useHyperliquid";
 import { cn } from "@/lib/utils";
+import { notify } from "@/lib/notify";
 import { ASSETS } from "@/types";
 import type { Asset } from "@/types";
 import { TrendingUp, TrendingDown, X, GripHorizontal, Layers } from "lucide-react";
@@ -73,6 +74,11 @@ export function FloatingPositions() {
     try {
       if (r.isLive) await hl.closeLivePosition({ asset: r.asset as Asset, direction: r.direction, size: r.size, currentPrice: r.mark });
       else closePosition(r.id, r.mark, "manual");
+      notify(
+        `🟦 <b>MANUAL CLOSE</b> · ${r.isLive ? "LIVE" : "PAPER"}\n` +
+        `Sold ${r.direction.toUpperCase()} <b>${r.asset}</b> @ $${r.mark.toFixed(4)}\n` +
+        `PnL: <b>${r.pnl >= 0 ? "+" : "-"}$${Math.abs(r.pnl).toFixed(2)}</b> (${r.pnlPct >= 0 ? "+" : ""}${r.pnlPct.toFixed(1)}%)`
+      );
     } catch { /* surfaced elsewhere */ }
     setTimeout(() => setClosing(null), 500);
   };

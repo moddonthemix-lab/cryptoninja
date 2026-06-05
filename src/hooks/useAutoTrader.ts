@@ -370,8 +370,16 @@ export function useAutoTrader(asset: Asset) {
         return;
       }
 
-      const { direction, confidence, entry, sl, tp, tpPct, reasoning,
+      // Paper trading switched off → don't open simulated trades
+      if (tradingMode !== "live" && !useStore.getState().paperTradingEnabled) {
+        addLog(`Paper trading is OFF — not opening a simulated trade`, "info");
+        setStatus((s) => ({ ...s, state: "idle", lastSignal: "Paper trading off" }));
+        return;
+      }
+
+      const { direction, confidence, entry, tp, tpPct, reasoning,
         trailTriggerPct = 20, trailRetreatPct = 35 } = data;
+      let { sl } = data;
 
       addLog(
         `Signal: ${direction.toUpperCase()} ${asset} @ $${entry.toFixed(2)} | conf ${confidence}% | TP ${tpPct}% margin`,
@@ -397,6 +405,16 @@ export function useAutoTrader(asset: Asset) {
       } else {
         available = useStore.getState().paperBalance;
       }
+      // ── Protect gains: once today's profit ≥ 25% of the account, tighten the
+      //    stop (−23% → −12% margin) so we give less back to the market. ──
+      const dayGain = await realizedToday(tradingMode === "live");
+      const equityNow = tradingMode === "live" ? (hl.totalBalance || available) : useStore.getState().paperBalance;
+      if (equityNow > 0 && dayGain / equityNow >= 0.25) {
+        const tightPct = 12 / 100 / autoTradeLeverage;
+        sl = direction === "long" ? entry * (1 - tightPct) : entry * (1 + tightPct);
+        addLog(`Up +${((dayGain / equityNow) * 100).toFixed(0)}% today — tightening SL to −12% to protect gains`, "info");
+      }
+
       const marginToUse = available * riskPct;
       let positionUsd = marginToUse * autoTradeLeverage; // notional
       // Honor Hyperliquid's $10 minimum order when there's margin to support it
