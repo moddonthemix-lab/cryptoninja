@@ -10,6 +10,10 @@ import { submitWithAgent, isAgentConfigured } from "@/lib/hl-agent";
 import { lockTarget } from "@/lib/trailing";
 import { botState, recordServerTrade, serverTradesToday } from "@/lib/botState";
 
+// If an open browser pinged within this window, the in-browser bot is handling
+// things — the cron stands down so the two never trade at once.
+const HEARTBEAT_TTL_MS = 3 * 60_000;
+
 // ── Server-side auto-trader loop ────────────────────────────────────────────
 // Hit this every ~1 min by a scheduler (Railway cron or cron-job.org) so the bot
 // scans + trades + trails 24/7, independent of any open browser.
@@ -48,6 +52,12 @@ async function handle(req: NextRequest) {
   if (!isAgentConfigured()) return NextResponse.json({ error: "HL_AGENT_PRIVATE_KEY not set" }, { status: 400 });
   const master = process.env.HL_MASTER_ADDRESS;
   if (!master) return NextResponse.json({ error: "HL_MASTER_ADDRESS not set" }, { status: 400 });
+
+  // Hand-off: if a browser is open and trading, stand down (unless overridden).
+  const sinceHeartbeat = Date.now() - botState.lastHeartbeat;
+  if (process.env.CRON_ALWAYS !== "true" && botState.lastHeartbeat && sinceHeartbeat < HEARTBEAT_TTL_MS) {
+    return NextResponse.json({ deferred: true, reason: "browser active — in-app bot handling", sinceHeartbeatSec: Math.round(sinceHeartbeat / 1000) });
+  }
 
   const origin = `${url.protocol}//${url.host}`;
   const leverage = parseInt(process.env.CRON_LEVERAGE || "3", 10);

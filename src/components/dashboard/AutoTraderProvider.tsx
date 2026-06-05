@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext } from "react";
+import { createContext, useContext, useEffect } from "react";
 import { useAutoTrader, type AutoTraderStatus } from "@/hooks/useAutoTrader";
 import { useStore } from "@/store/useStore";
 
@@ -17,5 +17,14 @@ export function useAutoTraderStatus(): AutoTraderStatus | null {
 export function AutoTraderProvider({ children }: { children: React.ReactNode }) {
   const selectedAsset = useStore((s) => s.selectedAsset);
   const status = useAutoTrader(selectedAsset);
+
+  // Heartbeat so the server cron defers to this browser while it's open.
+  useEffect(() => {
+    const ping = () => { fetch("/api/cron/heartbeat", { method: "POST" }).catch(() => {}); };
+    ping();
+    const id = setInterval(ping, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
   return <Ctx.Provider value={status}>{children}</Ctx.Provider>;
 }

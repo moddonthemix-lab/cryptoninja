@@ -8,6 +8,7 @@ export const botState = {
   tradesDate: "",
   tradesToday: 0,
   lastTradeTs: 0,
+  lastHeartbeat: 0,   // last time an open browser pinged in (for cron handoff)
   trail: {} as Record<string, ServerTrail>,
 };
 
