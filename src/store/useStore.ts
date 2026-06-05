@@ -33,6 +33,7 @@ interface AppState {
   // Auto trader
   autoTradeEnabled: boolean;
   autoTradeLeverage: number;
+  learningEnabled: boolean;   // feed recent trade outcomes back to the AI
   autoTradeCount: number;      // trades opened today
   autoTradeDate: string;       // YYYY-MM-DD the count belongs to
   autoTradeLastTs: number;     // ms timestamp of last auto trade (for cooldown)
@@ -89,6 +90,7 @@ interface AppState {
   toggleAI: () => void;
   toggleAutoTrade: () => void;
   setAutoTradeLeverage: (n: number) => void;
+  toggleLearning: () => void;
   recordAutoTrade: () => void;
   getTradesToday: () => number;
   resetAutoTradeCount: () => void;
@@ -127,6 +129,7 @@ export const useStore = create<AppState>()(
       aiEnabled: true,
       autoTradeEnabled: false,
       autoTradeLeverage: 3,
+      learningEnabled: true,
       autoTradeCount: 0,
       autoTradeDate: "",
       autoTradeLastTs: 0,
@@ -201,6 +204,8 @@ export const useStore = create<AppState>()(
             openedAt: pos.openedAt,
             closedAt: new Date().toISOString(),
             closeReason: reason as any,
+            note: pos.note,
+            confidence: pos.confidence,
           };
           return {
             openPositions: s.openPositions.filter((p) => p.id !== positionId),
@@ -220,6 +225,7 @@ export const useStore = create<AppState>()(
       toggleAI: () => set((s) => ({ aiEnabled: !s.aiEnabled })),
       toggleAutoTrade: () => set((s) => ({ autoTradeEnabled: !s.autoTradeEnabled })),
       setAutoTradeLeverage: (n) => set({ autoTradeLeverage: n }),
+      toggleLearning: () => set((s) => ({ learningEnabled: !s.learningEnabled })),
       // Use LOCAL calendar date (en-CA → YYYY-MM-DD) so the daily cap resets at
       // the user's local midnight, not UTC midnight.
       recordAutoTrade: () => set((s) => {
@@ -267,6 +273,7 @@ export const useStore = create<AppState>()(
         paperBalance: state.paperBalance,
         autoTradeLeverage: state.autoTradeLeverage,
         autoTradeEnabled: state.autoTradeEnabled,
+        learningEnabled: state.learningEnabled,
         autoTradeCount: state.autoTradeCount,
         autoTradeDate: state.autoTradeDate,
         autoTradeLastTs: state.autoTradeLastTs,

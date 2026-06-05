@@ -35,6 +35,7 @@ export function AutoTrader() {
     autoTradeLeverage, setAutoTradeLeverage,
     selectedAsset, tradingMode, setTradingMode, emergencyStop,
     openPositions, paperBalance, getTradesToday, resetAutoTradeCount,
+    learningEnabled, toggleLearning,
   } = useStore();
 
   const status = useAutoTrader(selectedAsset);
@@ -161,6 +162,18 @@ export function AutoTrader() {
             <RotateCcw size={12} />
           </button>
         </div>
+      </div>
+
+      {/* Learning toggle — feeds recent trade outcomes back to the AI */}
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-ninja-muted flex items-center gap-1.5"><Gauge size={11} /> Learning mode</span>
+        <button
+          onClick={toggleLearning}
+          className={cn("relative w-9 h-5 rounded-full transition-colors flex-shrink-0", learningEnabled ? "bg-ninja-accent" : "bg-ninja-border")}
+          title="When on, the bot reviews your recent wins/losses before each high-confidence decision"
+        >
+          <span className={cn("absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform", learningEnabled ? "translate-x-[18px]" : "translate-x-0.5")} />
+        </button>
       </div>
 
       {/* Telegram alerts status */}

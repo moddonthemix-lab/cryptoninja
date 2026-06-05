@@ -149,6 +149,8 @@ export interface Trade {
   closedAt?: string;
   txHash?: string;
   aiSignal?: AISignal;
+  note?: string;        // why the bot took this trade
+  confidence?: number;  // confidence at entry
 }
 
 export interface Position {
@@ -165,6 +167,8 @@ export interface Position {
   tradeId?: string;
   isOpen: boolean;
   openedAt: string;
+  note?: string;        // why the bot took this trade
+  confidence?: number;  // confidence at entry
 }
 
 export interface AISignal {

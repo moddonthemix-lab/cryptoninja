@@ -463,9 +463,12 @@ export function PositionsTable() {
                         )}
                       >
                         <td className="px-3 py-2">
-                          <span className="font-bold font-mono" style={{ color: ASSETS[trade.asset]?.color }}>
+                          <span className="font-bold font-mono" style={{ color: ASSETS[trade.asset]?.color }} title={trade.note ? `Why: ${trade.note}` : undefined}>
                             {trade.asset}
                           </span>
+                          {trade.confidence != null && (
+                            <span className="text-ninja-muted/50 ml-1 text-[10px]">{trade.confidence}%</span>
+                          )}
                         </td>
                         <td className="px-3 py-2">
                           <span className={cn(

@@ -256,11 +256,17 @@ function getClient(): Anthropic {
   return new Anthropic({ apiKey: key });
 }
 
+// Per-asset Claude cooldown — once we've asked Claude about a setup, don't ask
+// again for this long. Keeps credit usage to a few calls a day, not per-minute.
+const CLAUDE_COOLDOWN_MS = 15 * 60_000;
+interface ClaudeVerdict { ts: number; veto: boolean; confidence: number; tpPct: number; reasoning: string; trailTriggerPct: number; trailRetreatPct: number; isSwing: boolean; }
+const lastClaude = new Map<string, ClaudeVerdict>();
+
 // ─── POST handler ─────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
   try {
-    const { asset, leverage = 3 } = await req.json();
+    const { asset, leverage = 3, minConfidence = 60, learn = false, recentTrades = [] } = await req.json();
 
     // Resolve the HL coin name + dex for this ticker (stocks live on the xyz dex)
     const cfg = ASSETS[asset];
@@ -529,145 +535,126 @@ TP: use GB TP target when at a GB level. Otherwise use distance to next TheStrat
 Confidence drivers: FTFC agrees with break (+20) / conflicts (-15); intraday + GB aligned; at GB level; stop run; BTC agrees (n/a for HYPE/ONDO/PENDLE); 15m confirmation; London session.
 `.trim();
 
-    // ── Rule-based fallback (no Claude key) ──────────────────────────────
-    if (!process.env.ANTHROPIC_API_KEY) {
-      const direction = tradeDir === "bullish" ? "long" : "short"; // follow the break
-      let confidence = 45;
-      // FTFC folded into confidence: agree = strong boost, conflict = penalty
-      if (ftfcAgrees) confidence += 20;
-      else if (ftfcConflicts) confidence -= 15;
-      confidence += intradayAgreement * 8;        // up to +16 for 1H/4H aligned to break
-      confidence += gbAgreement * 5;              // up to +15 for GB TF bias
-      if (btcAgreesWithAsset) confidence += 10;
-      if (btcConflicts) confidence -= 10;
-      if (atGBLevel) confidence += 15;
-      if (stopRun.detected && stopRun.direction === tradeDir) confidence += 10;
-      if (confirmedVia15m) confidence += 5;
-      if (inManipulation) confidence += 5;
+    // ── Rule-based decision — ALWAYS computed locally, zero API cost ──────
+    const direction: "long" | "short" = tradeDir === "bullish" ? "long" : "short";
+    let confidence = 45;
+    if (ftfcAgrees) confidence += 20;
+    else if (ftfcConflicts) confidence -= 15;
+    confidence += intradayAgreement * 8;
+    confidence += gbAgreement * 5;
+    if (btcAgreesWithAsset) confidence += 10;
+    if (btcConflicts) confidence -= 10;
+    if (atGBLevel) confidence += 15;
+    if (stopRun.detected && stopRun.direction === tradeDir) confidence += 10;
+    if (confirmedVia15m) confidence += 5;
+    if (inManipulation) confidence += 5;
+    confidence = Math.min(100, Math.max(0, confidence));
 
-      let tpPct: number;
-      if (gbTpLevel && gbTpDistPct !== null) {
-        tpPct = Math.round(Math.min(100, Math.max(25, gbTpDistPct * leverage)));
-      } else if (distToNextKeyLevelPct > 5) tpPct = 80;
-      else if (distToNextKeyLevelPct < 2) tpPct = 30;
-      else tpPct = 50;
+    let tpPct: number;
+    if (gbTpLevel && gbTpDistPct !== null) tpPct = Math.round(Math.min(100, Math.max(25, gbTpDistPct * leverage)));
+    else if (distToNextKeyLevelPct > 5) tpPct = 80;
+    else if (distToNextKeyLevelPct < 2) tpPct = 30;
+    else tpPct = 50;
+    if (h4Dir === "neutral" && h1Dir === "neutral") tpPct = Math.round(tpPct * 0.7);
 
-      if (h4Dir === "neutral" && h1Dir === "neutral") tpPct = Math.round(tpPct * 0.7);
+    let isSwing = (dailyBarType === "2U" || dailyBarType === "2D") && intradayAgreement === 2 && btcAgreesWithAsset;
+    let trailTriggerPct = 20, trailRetreatPct = 35;
+    let reasoning = `${tradeDir === "bullish" ? "Long" : "Short"} break of prior ${whichBreak} ${tradeDir === "bullish" ? "high" : "low"} (5m/15m hold). FTFC ${assetFTFC}, intraday ${intradayAgreement}/2, GB ${gbAgreement}/3, BTC ${btcExcluded ? "n/a" : btcFTFC}.${atGBLevel ? ` At ${nearestGB.name}.` : ""}${stopRun.detected ? " Stop run." : ""}${inManipulation ? " London." : ""}`;
+    let aiUsed = false;
+    let vetoed = false;
+    let vetoReason = "";
 
+    const buildPayload = () => {
       const slPricePct = 0.23 / leverage;
       const tpPricePct = tpPct / 100 / leverage;
-      const isSwing = (dailyBarType === "2U" || dailyBarType === "2D") && intradayAgreement === 2 && btcAgreesWithAsset;
-
-      return NextResponse.json({
-        shouldTrade: true, direction, leverage,
-        confidence: Math.min(100, Math.max(0, confidence)),
-        tpPct, slPct: 23, isSwing,
+      return {
+        shouldTrade: !vetoed, direction, leverage,
+        confidence, tpPct, slPct: 23, isSwing, aiUsed,
+        reason: vetoed ? vetoReason : undefined,
         entry: currentPrice,
         sl: direction === "long" ? currentPrice * (1 - slPricePct) : currentPrice * (1 + slPricePct),
         tp: direction === "long" ? currentPrice * (1 + tpPricePct) : currentPrice * (1 - tpPricePct),
-        reasoning: `Rule-based: FTFC ${assetFTFC}, intraday ${intradayAgreement}/3, GB ${gbAgreement}/3, BTC ${btcFTFC}.${atGBLevel ? ` At ${nearestGB.name}.` : ""}${stopRun.detected ? " Stop run." : ""}${inManipulation ? " London." : ""}`,
-        trailTriggerPct: 20, trailRetreatPct: 35,
+        reasoning, trailTriggerPct, trailRetreatPct,
         ftfc: assetFTFC, weeklyDir, dailyDir, h4Dir, h1Dir,
-        dailyBarType, h4BarType, h1BarType, btcFTFC,
+        dailyBarType, h4BarType, h1BarType, btcFTFC, btcAgreesWithAsset, btcConflicts,
         priorDayHigh: priorDay.high, priorDayLow: priorDay.low,
         priorH4High: priorH4.high, priorH4Low: priorH4.low,
         priorH1High: priorH1.high, priorH1Low: priorH1.low,
-        priorWeekHigh, priorWeekLow, intradayAgreement, gbAgreement,
+        priorWeekHigh, priorWeekLow, distToNextKeyLevelPct, intradayAgreement, gbAgreement,
         goldbachLevel: nearestGB.name, goldbachLevelPrice: nearestGB.level,
         atGoldbachLevel: atGBLevel, goldbachTp: gbTpLevel, gbBiasDaily, gbBiasH4, gbBiasH1,
-        po3Main, amdPhase, stopRunDetected: stopRun.detected,
-        confidenceBreakdown,
-      });
+        po3Main, dealingRangeLow: drMain.low, dealingRangeHigh: drMain.high,
+        amdPhase, stopRunDetected: stopRun.detected, confidenceBreakdown,
+      };
+    };
+
+    // Only escalate to Claude for QUALIFIED candidates (rule confidence ≥ min),
+    // and at most once per asset per cooldown window. This is what keeps credit
+    // usage to a few calls a day instead of one per scan.
+    const qualifies = confidence >= minConfidence;
+    const cached = lastClaude.get(asset) as any;
+    const cooling = cached && cached.ts > Date.now() - CLAUDE_COOLDOWN_MS;
+
+    if (process.env.ANTHROPIC_API_KEY && qualifies && cooling) {
+      // Reuse the recent Claude verdict — no new API call
+      aiUsed = true;
+      if (cached.veto) { vetoed = true; vetoReason = `AI veto (cached): ${cached.reasoning}`; }
+      else { confidence = cached.confidence; tpPct = cached.tpPct; reasoning = cached.reasoning; trailTriggerPct = cached.trailTriggerPct; trailRetreatPct = cached.trailRetreatPct; isSwing = cached.isSwing; }
+      return NextResponse.json(buildPayload());
     }
 
-    // ── Claude path ───────────────────────────────────────────────────────
-    const tradeSide = tradeDir === "bullish" ? "long" : "short";
-    const prompt = `You are an expert crypto trader using TheStrat (Rob Smith) + Goldbach methodology.
-Pre-conditions passed: FTFC=${assetFTFC}; a ${tradeDir} break of the prior ${whichBreak} ${tradeDir === "bullish" ? "high" : "low"} is confirmed and holding on the 5m.
-The trade DIRECTION is therefore ${tradeSide.toUpperCase()} — do not flip it. Your job is to judge quality and parameters.
+    if (process.env.ANTHROPIC_API_KEY && qualifies && !cooling) {
+      const tradeSide = direction;
+      const journal = (learn && Array.isArray(recentTrades) && recentTrades.length)
+        ? `\n=== YOUR RECENT TRADES — LEARN FROM THESE ===\n` +
+          recentTrades.slice(0, 8).map((t: any) =>
+            `${(t.pnlPct ?? 0) >= 0 ? "WIN " : "LOSS"} ${String(t.direction || "").toUpperCase()} ${t.asset} conf ${t.confidence ?? "?"}% → ${(t.pnlPct ?? 0) >= 0 ? "+" : ""}${(t.pnlPct ?? 0).toFixed(0)}%${t.note ? ` — ${t.note}` : ""}`
+          ).join("\n") +
+          `\nLearn: be MORE selective on setups resembling the losses; favor patterns resembling the wins. If recent win rate is poor, only approve A+ setups (return shouldTrade=false otherwise).`
+        : "";
 
-${contextBlock}
+      const prompt = `You are an expert crypto trader using TheStrat (Rob Smith) + Goldbach methodology.
+A ${tradeDir} break of the prior ${whichBreak} ${tradeDir === "bullish" ? "high" : "low"} is confirmed and holding. The DIRECTION is fixed to ${tradeSide.toUpperCase()} — never flip it. Rule-based confidence is ${confidence}%. Judge quality and finalize parameters.
 
-DECISION RULES:
-The direction is fixed to the confirmed break (${tradeSide}). Never return the opposite side.
-Goldbach entries: enter at GB levels (OB=11/89%, FVG=17/83%, Breaker=41/59%, Equil=47/53%).
-GB TP: OB→Breaker, FVG→Breaker, Breaker→OB, Equil→opposite Equil, LV→Equil.
+${contextBlock}${journal}
+
 Best setup: break + intraday TFs agree + GB bias agrees + at GB level + stop run + London session.
-If the setup looks weak (no GB level, no stop run, conflicting BTC), return shouldTrade=false.
-
-Decide:
-1. shouldTrade: true/false
-2. direction: "${tradeSide}" (fixed — must match the break)
-3. confidence: 0-100. Score: +7 per intraday TF agreement (max +21), +5 per GB TF bias agreement (max +15), +15 if at GB level, +10 stop run, +10 BTC agrees, +10 London session
-4. tpPct: 25-100 (% margin). Use GB TP distance × leverage if at a GB level. Otherwise TheStrat key level distance × leverage.
-5. isSwing: true if daily 2U/2D + all 3 intraday TFs agree + BTC agrees + at OB/FVG level
-6. trailTriggerPct: 15-40
-7. trailRetreatPct: 20-45
-8. reasoning: one sentence covering FTFC, which GB level, which TFs agreed
+If the setup is weak (no GB level, no stop run, conflicting BTC/FTFC, or it resembles your recent losses), return shouldTrade=false.
 
 Return ONLY this JSON:
-{
-  "shouldTrade": true or false,
-  "direction": "long" or "short",
-  "confidence": 0-100,
-  "tpPct": 25-100,
-  "isSwing": true or false,
-  "trailTriggerPct": 15-40,
-  "trailRetreatPct": 20-45,
-  "reasoning": "one sentence"
-}`;
+{ "shouldTrade": true|false, "direction": "${tradeSide}", "confidence": 0-100, "tpPct": 25-100, "isSwing": true|false, "trailTriggerPct": 15-40, "trailRetreatPct": 20-45, "reasoning": "one concise sentence on WHY (FTFC, GB level, TFs, flow)" }`;
 
-    const msg = await getClient().messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 512,
-      messages: [{ role: "user", content: prompt }],
-    });
-
-    const text = msg.content[0].type === "text" ? msg.content[0].text : "{}";
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error("No JSON in Claude response");
-    const ai = JSON.parse(jsonMatch[0]);
-
-    if (!ai.shouldTrade) {
-      return NextResponse.json({
-        shouldTrade: false,
-        reason: ai.reasoning ?? "Claude declined",
-        ftfc: assetFTFC, weeklyDir, dailyDir, h4Dir, h1Dir,
-        dailyBarType, h4BarType, h1BarType, btcFTFC,
-        goldbachLevel: nearestGB.name, gbBiasDaily, gbBiasH4, gbBiasH1, amdPhase,
-      });
+      try {
+        const msg = await getClient().messages.create({
+          model: "claude-sonnet-4-6",
+          max_tokens: 400,
+          messages: [{ role: "user", content: prompt }],
+        });
+        const text = msg.content[0].type === "text" ? msg.content[0].text : "{}";
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const ai = JSON.parse(jsonMatch[0]);
+          aiUsed = true;
+          if (!ai.shouldTrade) {
+            vetoed = true;
+            vetoReason = `AI veto: ${ai.reasoning ?? "low quality setup"}`;
+          } else {
+            confidence = Math.min(100, Math.max(0, ai.confidence ?? confidence));
+            tpPct = Math.min(100, Math.max(25, ai.tpPct ?? tpPct));
+            reasoning = ai.reasoning ?? reasoning;
+            trailTriggerPct = ai.trailTriggerPct ?? trailTriggerPct;
+            trailRetreatPct = ai.trailRetreatPct ?? trailRetreatPct;
+            isSwing = ai.isSwing ?? isSwing;
+          }
+          lastClaude.set(asset, { ts: Date.now(), veto: vetoed, confidence, tpPct, reasoning, trailTriggerPct, trailRetreatPct, isSwing });
+        }
+      } catch (err) {
+        // Claude failed — fall back to the rule-based decision already computed
+        console.error("Claude autotrade error:", err instanceof Error ? err.message : err);
+      }
     }
 
-    // Force direction to the confirmed break — never let the model trade against it
-    const direction: "long" | "short" = tradeDir === "bullish" ? "long" : "short";
-    const tpPct = Math.min(100, Math.max(25, ai.tpPct ?? 50));
-    const slPricePct = 0.23 / leverage;
-    const tpPricePct = tpPct / 100 / leverage;
-
-    return NextResponse.json({
-      shouldTrade: true, direction, leverage,
-      confidence: Math.min(100, Math.max(0, ai.confidence ?? 60)),
-      tpPct, slPct: 23, isSwing: ai.isSwing ?? false,
-      entry: currentPrice,
-      sl: direction === "long" ? currentPrice * (1 - slPricePct) : currentPrice * (1 + slPricePct),
-      tp: direction === "long" ? currentPrice * (1 + tpPricePct) : currentPrice * (1 - tpPricePct),
-      reasoning: ai.reasoning ?? "",
-      trailTriggerPct: ai.trailTriggerPct ?? 20,
-      trailRetreatPct: ai.trailRetreatPct ?? 35,
-      ftfc: assetFTFC, weeklyDir, dailyDir, h4Dir, h1Dir,
-      dailyBarType, h4BarType, h1BarType,
-      btcFTFC, btcAgreesWithAsset, btcConflicts,
-      priorDayHigh: priorDay.high, priorDayLow: priorDay.low,
-      priorH4High: priorH4.high, priorH4Low: priorH4.low,
-      priorH1High: priorH1.high, priorH1Low: priorH1.low,
-      priorWeekHigh, priorWeekLow, distToNextKeyLevelPct,
-      intradayAgreement, gbAgreement, gbBiasDaily, gbBiasH4, gbBiasH1,
-      goldbachLevel: nearestGB.name, goldbachLevelPrice: nearestGB.level,
-      atGoldbachLevel: atGBLevel, goldbachTp: gbTpLevel,
-      po3Main, dealingRangeLow: drMain.low, dealingRangeHigh: drMain.high,
-      amdPhase, stopRunDetected: stopRun.detected,
-      confidenceBreakdown,
-    });
+    return NextResponse.json(buildPayload());
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "Unknown error";
     console.error("autotrade error:", msg);
