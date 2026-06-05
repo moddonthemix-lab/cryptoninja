@@ -266,7 +266,7 @@ const lastClaude = new Map<string, ClaudeVerdict>();
 
 export async function POST(req: NextRequest) {
   try {
-    const { asset, leverage = 3, minConfidence = 60, learn = false, recentTrades = [] } = await req.json();
+    const { asset, leverage = 3, minConfidence = 60, learn = false, recentTrades = [], preview = false } = await req.json();
 
     // Resolve the HL coin name + dex for this ticker (stocks live on the xyz dex)
     const cfg = ASSETS[asset];
@@ -618,6 +618,9 @@ Confidence drivers: FTFC agrees with break (+20) / conflicts (-15); intraday + G
     const qualifies = confidence >= minConfidence;
     const cached = lastClaude.get(asset) as any;
     const cooling = cached && cached.ts > Date.now() - CLAUDE_COOLDOWN_MS;
+
+    // Preview mode (auto-trader OFF): rule-based only, never spend credits.
+    if (preview) return NextResponse.json(buildPayload());
 
     if (process.env.ANTHROPIC_API_KEY && qualifies && cooling) {
       // Reuse the recent Claude verdict — no new API call

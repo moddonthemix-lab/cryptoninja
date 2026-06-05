@@ -350,7 +350,7 @@ export function AutoTrader() {
               {status.lockedPct > 0 ? (
                 <span>SL locked at <b>+{status.lockedPct}%</b> profit · peak +{status.peakPnlPct.toFixed(0)}%</span>
               ) : (
-                <span>Trail locks +5% once trade hits +15%, +7% each +20% after (peak +{status.peakPnlPct.toFixed(0)}%)</span>
+                <span>Trail: +7% locked at +20% (then +7%/+20%), jumps to +40% at +60%, then +9%/+25% (peak +{status.peakPnlPct.toFixed(0)}%)</span>
               )}
             </div>
           )}

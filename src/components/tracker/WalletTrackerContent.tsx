@@ -30,6 +30,17 @@ function WalletCard({ address, label, onRemove, tradable }: { address: string; l
   const [data, setData] = useState<TraderData | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [wr, setWr] = useState<{ winRate: number; wins: number; losses: number; trades: number } | null>(null);
+
+  // Live win rate (from fills) — cached server-side, refreshed every 5 min
+  useEffect(() => {
+    let c = false;
+    const load = () => fetch(`/api/hl/winrate?address=${address}`).then((r) => r.json())
+      .then((d) => { if (!c && !d.error) setWr(d); }).catch(() => {});
+    load();
+    const id = setInterval(load, 5 * 60 * 1000);
+    return () => { c = true; clearInterval(id); };
+  }, [address]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -116,11 +127,20 @@ function WalletCard({ address, label, onRemove, tradable }: { address: string; l
         </div>
       </div>
 
-      {/* Balance + PnL */}
-      <div className="grid grid-cols-3 gap-2 text-xs">
+      {/* Balance + PnL + win rate */}
+      <div className="grid grid-cols-4 gap-2 text-xs">
         <div className="bg-ninja-bg/50 rounded-lg p-2">
           <div className="text-ninja-muted mb-0.5">Equity</div>
           <div className="font-mono font-bold text-ninja-text">${(data?.accountValue ?? 0).toFixed(2)}</div>
+        </div>
+        <div className="bg-ninja-bg/50 rounded-lg p-2">
+          <div className="text-ninja-muted mb-0.5">Win rate</div>
+          {wr ? (
+            <div className={cn("font-mono font-bold", wr.winRate >= 50 ? "text-ninja-green" : "text-yellow-400")}>
+              {wr.winRate.toFixed(0)}%
+              <span className="text-ninja-muted/50 ml-1 text-[10px] font-normal">{wr.wins}W/{wr.losses}L</span>
+            </div>
+          ) : <div className="text-ninja-muted/40 font-mono">…</div>}
         </div>
         <div className="bg-ninja-bg/50 rounded-lg p-2">
           <div className="text-ninja-muted mb-0.5">Open PnL</div>

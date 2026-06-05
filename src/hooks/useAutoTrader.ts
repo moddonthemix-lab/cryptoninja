@@ -263,30 +263,35 @@ export function useAutoTrader(asset: Asset) {
     return () => clearInterval(id);
   }, []);
 
-  // ── Scanner: ask Claude/TheStrat every 5 min ────────────────────────────
+  // ── Scanner: rule-based signal every scan; AI + trade only when enabled ──
   const runScan = useCallback(async () => {
     if (scanningRef.current || emergencyStop) return;
 
     const store = useStore.getState();
+    // Preview mode: when the bot is OFF, still scan to SHOW the signal/confidence
+    // (rule-based only — no AI, no credits, no trade).
+    const preview = !store.autoTradeEnabled;
 
-    // ── Daily trade cap — stop calling the API entirely once hit ──
-    const tradesToday = store.getTradesToday();
-    if (tradesToday >= MAX_TRADES_PER_DAY) {
-      setStatus((s) => ({ ...s, state: "idle", lastSignal: `Daily limit reached (${MAX_TRADES_PER_DAY} trades). Resets at midnight, or tap reset.` }));
-      return;
+    if (!preview) {
+      // ── Daily trade cap — stop calling the API entirely once hit ──
+      const tradesToday = store.getTradesToday();
+      if (tradesToday >= MAX_TRADES_PER_DAY) {
+        setStatus((s) => ({ ...s, state: "idle", lastSignal: `Daily limit reached (${MAX_TRADES_PER_DAY} trades). Resets at midnight, or tap reset.` }));
+        return;
+      }
+
+      // ── Cooldown between trades — avoids spamming the API ──
+      const sinceLast = Date.now() - (store.autoTradeLastTs || 0);
+      if (store.autoTradeLastTs && sinceLast < TRADE_COOLDOWN_MS) {
+        const mins = Math.ceil((TRADE_COOLDOWN_MS - sinceLast) / 60000);
+        setStatus((s) => ({ ...s, state: "idle", lastSignal: `Cooldown — next scan in ~${mins} min` }));
+        return;
+      }
+
+      // One position per asset at a time (don't re-scan/charge while in a trade)
+      const openCount = store.openPositions.filter((p) => p.isOpen && p.asset === asset).length;
+      if (openCount >= 1) return;
     }
-
-    // ── Cooldown between trades — avoids spamming the API ──
-    const sinceLast = Date.now() - (store.autoTradeLastTs || 0);
-    if (store.autoTradeLastTs && sinceLast < TRADE_COOLDOWN_MS) {
-      const mins = Math.ceil((TRADE_COOLDOWN_MS - sinceLast) / 60000);
-      setStatus((s) => ({ ...s, state: "idle", lastSignal: `Cooldown — next scan in ~${mins} min` }));
-      return;
-    }
-
-    // One position per asset at a time (don't re-scan/charge while in a trade)
-    const openCount = store.openPositions.filter((p) => p.isOpen && p.asset === asset).length;
-    if (openCount >= 1) return;
 
     scanningRef.current = true;
     setStatus((s) => ({ ...s, state: "scanning", lastScanTime: new Date().toLocaleTimeString() }));
@@ -305,15 +310,15 @@ export function useAutoTrader(asset: Asset) {
         body: JSON.stringify({
           asset, leverage: autoTradeLeverage,
           minConfidence: MIN_CONFIDENCE,
-          learn: useStore.getState().learningEnabled,
-          recentTrades,
+          learn: !preview && useStore.getState().learningEnabled,
+          recentTrades: preview ? [] : recentTrades,
+          preview,
         }),
       });
       const data = await res.json();
 
       if (data.error) {
-        addLog(`Scan error: ${data.error}`, "error");
-        setStatus((s) => ({ ...s, state: "error", lastSignal: data.error }));
+        if (!preview) { addLog(`Scan error: ${data.error}`, "error"); setStatus((s) => ({ ...s, state: "error", lastSignal: data.error })); }
         return;
       }
 
@@ -325,6 +330,14 @@ export function useAutoTrader(asset: Asset) {
           lastConfidence: data.confidence ?? null,
           lastBreakdownDir: data.direction ?? null,
         }));
+      }
+
+      // Preview mode: just show the signal, never trade
+      if (preview) {
+        const dir = data.direction ? data.direction.toUpperCase() : "";
+        setStatus((s) => ({ ...s, state: "idle", lastSignal: data.shouldTrade && data.confidence >= MIN_CONFIDENCE
+          ? `Signal: ${dir} ${data.confidence}% (bot off)` : (data.reason ?? `Watching — ${data.confidence ?? 0}%`) }));
+        return;
       }
 
       if (!data.shouldTrade) {
@@ -485,16 +498,14 @@ export function useAutoTrader(asset: Asset) {
     }
   }, [asset, autoTradeLeverage, emergencyStop, tradingMode, openPosition, addLog, hl.setTpSl, hl.availableBalance]);
 
-  // ── Scan timer: only runs when bot is enabled ────────────────────────────
+  // ── Scan timer: always runs. When the bot is ON it can trade/use AI; when OFF
+  //    it scans in preview mode (rule-based only) to show the live signal. ──
   useEffect(() => {
-    if (!autoTradeEnabled || emergencyStop) {
-      if (!autoTradeEnabled) setStatus((s) => ({ ...s, state: "idle" }));
-      return;
-    }
+    if (emergencyStop) return;
     runScan(); // immediate first scan
     const timer = setInterval(runScan, SCAN_INTERVAL_MS);
     return () => clearInterval(timer);
-  }, [autoTradeEnabled, emergencyStop, runScan]);
+  }, [emergencyStop, runScan]);
 
   return status;
 }

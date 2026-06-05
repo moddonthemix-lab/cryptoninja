@@ -1,14 +1,16 @@
 // Shared ratcheting profit-lock trailing stop, used by the auto-trader and the
 // copy-trade engine so both register positions for the same trailing monitor.
-//   at +15% profit → lock +5%; then every additional +20% → lock another +7%
-export const TRAIL_ARM_PCT = 15;    // start locking once profit reaches this
-export const TRAIL_FIRST_LOCK = 5;  // first locked level
-export const TRAIL_STEP_PCT = 20;   // each further profit step
-export const TRAIL_STEP_LOCK = 7;   // lock added per step
+//
+// Ladder:
+//   • +20% profit → lock +7%, then +7% more every +20% (so 40%→14%) up to +60%
+//   • at +60% profit → jump the locked stop to +40%
+//   • beyond +60% → lock +9% more every +25% (85%→49%, 110%→58%, …) up to TP
+export const TRAIL_ARM_PCT = 20;   // start locking once profit reaches this
 
 export function lockTarget(pnlPct: number): number {
-  if (pnlPct < TRAIL_ARM_PCT) return 0;
-  return TRAIL_FIRST_LOCK + TRAIL_STEP_LOCK * Math.floor((pnlPct - TRAIL_ARM_PCT) / TRAIL_STEP_PCT);
+  if (pnlPct < 20) return 0;
+  if (pnlPct < 60) return 7 + 7 * Math.floor((pnlPct - 20) / 20); // 20→7, 40→14
+  return 40 + 9 * Math.floor((pnlPct - 60) / 25);                 // 60→40, 85→49, 110→58…
 }
 
 export interface TrailMeta {
