@@ -328,6 +328,8 @@ export function useAutoTrader(asset: Asset) {
           minConfidence: MIN_CONFIDENCE,
           learn: !preview && useStore.getState().learningEnabled,
           recentTrades: preview ? [] : recentTrades,
+          // AI only when the toggle is on AND we're actually trading (not preview)
+          useAI: !preview && useStore.getState().botUseAI,
           preview,
         }),
       });
@@ -370,8 +372,14 @@ export function useAutoTrader(asset: Asset) {
         return;
       }
 
+      // ── Final safety gates (re-read fresh state right before committing) ──
+      const gate = useStore.getState();
+      if (!gate.autoTradeEnabled) {            // bot was turned off mid-scan
+        setStatus((s) => ({ ...s, state: "idle" }));
+        return;
+      }
       // Paper trading switched off → don't open simulated trades
-      if (tradingMode !== "live" && !useStore.getState().paperTradingEnabled) {
+      if (gate.tradingMode !== "live" && !gate.paperTradingEnabled) {
         addLog(`Paper trading is OFF — not opening a simulated trade`, "info");
         setStatus((s) => ({ ...s, state: "idle", lastSignal: "Paper trading off" }));
         return;

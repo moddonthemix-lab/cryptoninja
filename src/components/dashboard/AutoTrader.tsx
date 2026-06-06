@@ -38,6 +38,7 @@ export function AutoTrader() {
     botAsset, setBotAsset, tradingMode, setTradingMode, emergencyStop,
     openPositions, paperBalance, getTradesToday, resetAutoTradeCount,
     learningEnabled, toggleLearning, paperTradingEnabled, togglePaperTrading,
+    botUseAI, toggleBotAI,
   } = useStore();
 
   const status: AutoTraderStatus = useAutoTraderStatus() ?? {
@@ -203,6 +204,18 @@ export function AutoTrader() {
             <RotateCcw size={12} />
           </button>
         </div>
+      </div>
+
+      {/* AI on/off — when off the bot decides rule-based only (no Claude/credits) */}
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-ninja-muted flex items-center gap-1.5"><Zap size={11} /> AI analysis</span>
+        <button
+          onClick={toggleBotAI}
+          className={cn("relative w-9 h-5 rounded-full transition-colors flex-shrink-0", botUseAI ? "bg-ninja-accent" : "bg-ninja-border")}
+          title={botUseAI ? "AI validates qualified setups (uses credits)" : "Rule-based only — no AI, no credits"}
+        >
+          <span className={cn("absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform", botUseAI ? "translate-x-[18px]" : "translate-x-0.5")} />
+        </button>
       </div>
 
       {/* Paper trading on/off — when off the bot won't open simulated trades */}
