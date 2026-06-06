@@ -57,14 +57,16 @@ export async function POST(req: NextRequest) {
   const from = String(msg?.chat?.id ?? "");
   if (!text || from !== String(chatId)) return NextResponse.json({ ok: true }); // only the owner
 
-  const cmd = text.split(/\s+/)[0].toLowerCase().replace(/@.*$/, "");
+  const parts = text.split(/\s+/);
+  const cmd = parts[0].toLowerCase().replace(/@.*$/, "");
+  const arg = (parts[1] || "").toUpperCase().replace(/[^A-Z0-9]/g, ""); // optional ticker
   const origin = `${new URL(req.url).protocol}//${new URL(req.url).host}`;
   const master = process.env.HL_MASTER_ADDRESS;
   const leverage = parseInt(process.env.CRON_LEVERAGE || "3", 10);
 
   try {
     if (cmd === "/help" || cmd === "/start") {
-      await tg(token, chatId, `🥷 <b>CryptoNinja commands</b>\n/long — open a long on BTC\n/short — open a short on BTC\n/close — close the open position\n/status — account + open position`);
+      await tg(token, chatId, `🥷 <b>CryptoNinja commands</b>\n/long — open a long on BTC\n/short — open a short on BTC\n/close — close ALL open positions\n/close BTC — close just that ticker\n/status — account + open positions`);
       return NextResponse.json({ ok: true });
     }
 
@@ -119,8 +121,18 @@ export async function POST(req: NextRequest) {
       const meta = await (await fetch(`${origin}/api/hl/meta`)).json();
       const metaByCoin: Record<string, any> = {};
       Object.values(meta as Record<string, any>).forEach((m: any) => { metaByCoin[m.hlCoin] = m; });
-      const positions = await openPositions(master);
+      let positions = await openPositions(master);
       if (!positions.length) { await tg(token, chatId, "No open positions to close."); return NextResponse.json({ ok: true }); }
+
+      // /close BTC → only that ticker; /close → all
+      if (arg) {
+        positions = positions.filter((p) => p.coin.replace(/^xyz:/, "").toUpperCase() === arg);
+        if (!positions.length) {
+          const have = (await openPositions(master)).map((p) => p.coin.replace(/^xyz:/, "")).join(", ") || "none";
+          await tg(token, chatId, `No <b>${arg}</b> position. Open: ${have}`);
+          return NextResponse.json({ ok: true });
+        }
+      }
 
       for (const p of positions) {
         const info = metaByCoin[p.coin]; if (!info) { await tg(token, chatId, `⚠️ No meta for ${p.coin}`); continue; }
