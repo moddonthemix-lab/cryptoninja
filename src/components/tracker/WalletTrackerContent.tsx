@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useStore } from "@/store/useStore";
 import { cn } from "@/lib/utils";
 import { ASSETS } from "@/types";
-import { Eye, Plus, X, TrendingUp, TrendingDown, Copy as CopyIcon, RefreshCw, CheckCircle } from "lucide-react";
+import { Eye, Plus, X, TrendingUp, TrendingDown, Copy as CopyIcon, RefreshCw, CheckCircle, Pencil, Check } from "lucide-react";
 
 interface TraderPos {
   coin: string; direction: "long" | "short"; size: number;
@@ -26,7 +26,10 @@ function fmtAge(ms: number | null): string {
 }
 
 function WalletCard({ address, label, onRemove, tradable }: { address: string; label: string; onRemove: () => void; tradable: Set<string> }) {
-  const { copyTrade, setCopyTrade } = useStore();
+  const { copyTrade, setCopyTrade, renameTrackedWallet } = useStore();
+  const [editing, setEditing] = useState(false);
+  const [nameDraft, setNameDraft] = useState(label);
+  const saveName = () => { renameTrackedWallet(address, nameDraft.trim()); setEditing(false); };
   const [data, setData] = useState<TraderData | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -94,7 +97,31 @@ function WalletCard({ address, label, onRemove, tradable }: { address: string; l
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            {label && <span className="font-bold text-sm text-ninja-text truncate">{label}</span>}
+            {editing ? (
+              <span className="flex items-center gap-1">
+                <input
+                  value={nameDraft}
+                  onChange={(e) => setNameDraft(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") saveName(); if (e.key === "Escape") setEditing(false); }}
+                  autoFocus
+                  placeholder="Wallet name"
+                  className="input text-sm py-0.5 w-36"
+                />
+                <button onClick={saveName} title="Save" className="text-ninja-green hover:text-ninja-green/80"><Check size={14} /></button>
+                <button onClick={() => { setNameDraft(label); setEditing(false); }} title="Cancel" className="text-ninja-muted hover:text-red-400"><X size={14} /></button>
+              </span>
+            ) : (
+              <button
+                onClick={() => { setNameDraft(label); setEditing(true); }}
+                className="flex items-center gap-1 group"
+                title="Edit name"
+              >
+                <span className={cn("font-bold text-sm truncate", label ? "text-ninja-text" : "text-ninja-muted/60 italic")}>
+                  {label || "Add name"}
+                </span>
+                <Pencil size={11} className="text-ninja-muted/50 group-hover:text-ninja-accent" />
+              </button>
+            )}
             {isCopying && (
               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-ninja-accent/20 text-ninja-accent flex items-center gap-1">
                 <CheckCircle size={9} /> COPYING
@@ -234,7 +261,7 @@ export function WalletTrackerContent() {
   }, []);
 
   const valid = /^0x[0-9a-fA-F]{40}$/.test(addr.trim());
-  const full = trackedWallets.length >= 5;
+  const full = trackedWallets.length >= 10;
   const dup = trackedWallets.some((w) => w.address.toLowerCase() === addr.trim().toLowerCase());
 
   const add = () => {
@@ -244,14 +271,14 @@ export function WalletTrackerContent() {
   };
 
   return (
-    <div className="space-y-4 animate-fade-in max-w-4xl">
+    <div className="space-y-4 animate-fade-in max-w-6xl">
       <div className="flex items-center gap-2">
         <Eye size={20} className="text-ninja-accent" />
         <h1 className="text-lg font-bold text-ninja-text">Wallet Tracker</h1>
-        <span className="text-xs text-ninja-muted">({trackedWallets.length}/5)</span>
+        <span className="text-xs text-ninja-muted">({trackedWallets.length}/10)</span>
       </div>
       <p className="text-ninja-muted text-sm">
-        Track up to 5 Hyperliquid wallets — see their live positions, size, leverage, PnL and equity.
+        Track up to 10 Hyperliquid wallets — see their live positions, size, leverage, PnL and equity.
         Hit <b className="text-ninja-text">Copy</b> on any wallet to start mirroring it (configure sizing in the COPY tab).
       </p>
 
@@ -273,7 +300,7 @@ export function WalletTrackerContent() {
         </div>
         <div className="flex items-center justify-between">
           <span className="text-xs text-red-400">
-            {addr && !valid ? "Not a valid 0x address" : dup ? "Already tracked" : full ? "Max 5 wallets — remove one first" : ""}
+            {addr && !valid ? "Not a valid 0x address" : dup ? "Already tracked" : full ? "Max 10 wallets — remove one first" : ""}
           </span>
           <button onClick={add} disabled={!valid || full || dup}
             className={cn("flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all",
@@ -289,7 +316,7 @@ export function WalletTrackerContent() {
           No wallets tracked yet. Paste an address above to start.
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-start">
           {trackedWallets.map((w) => (
             <WalletCard key={w.address} address={w.address} label={w.label} onRemove={() => removeTrackedWallet(w.address)} tradable={tradable} />
           ))}

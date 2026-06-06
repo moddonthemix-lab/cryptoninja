@@ -106,6 +106,7 @@ interface AppState {
   requestCopySync: () => void;
   addTrackedWallet: (address: string, label?: string) => void;
   removeTrackedWallet: (address: string) => void;
+  renameTrackedWallet: (address: string, label: string) => void;
   addNotification: (n: AppState["notifications"][number]) => void;
   dismissNotification: (id: string) => void;
   clearNotifications: () => void;
@@ -261,12 +262,17 @@ export const useStore = create<AppState>()(
       requestCopySync: () => set((s) => ({ copySyncNonce: s.copySyncNonce + 1 })),
       addTrackedWallet: (address, label = "") => set((s) => {
         const addr = address.trim();
-        if (s.trackedWallets.length >= 5) return {};
+        if (s.trackedWallets.length >= 10) return {};
         if (s.trackedWallets.some((w) => w.address.toLowerCase() === addr.toLowerCase())) return {};
         return { trackedWallets: [...s.trackedWallets, { address: addr, label: label.trim() }] };
       }),
       removeTrackedWallet: (address) => set((s) => ({
         trackedWallets: s.trackedWallets.filter((w) => w.address.toLowerCase() !== address.toLowerCase()),
+      })),
+      renameTrackedWallet: (address, label) => set((s) => ({
+        trackedWallets: s.trackedWallets.map((w) =>
+          w.address.toLowerCase() === address.toLowerCase() ? { ...w, label: label.trim() } : w
+        ),
       })),
       addNotification: (n) => set((s) => ({ notifications: [n, ...s.notifications].slice(0, 40) })),
       dismissNotification: (id) => set((s) => ({ notifications: s.notifications.filter((n) => n.id !== id) })),
