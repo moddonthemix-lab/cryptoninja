@@ -72,11 +72,13 @@ async function handle(req: NextRequest) {
 
     // ── Current positions (main + xyz dex) ──
     const [main, xyz] = await Promise.all([getUserState(master), getUserStateDex(master, "xyz").catch(() => null)]);
-    const openByCoin: Record<string, { szi: number; entryPx: number; lev: number; upnl: number }> = {};
+    const openByCoin: Record<string, { szi: number; entryPx: number; lev: number; upnl: number; mark: number }> = {};
     const collect = (st: any, dex: "" | "xyz") => ((st?.assetPositions) || []).forEach((ap: any) => {
       const p = ap.position; const szi = parseFloat(p.szi); if (!szi) return;
       const coin = dex === "xyz" && !String(p.coin).startsWith("xyz:") ? `xyz:${p.coin}` : p.coin;
-      openByCoin[coin] = { szi, entryPx: parseFloat(p.entryPx), lev: p.leverage?.value ?? leverage, upnl: parseFloat(p.unrealizedPnl || "0") };
+      const posVal = parseFloat(p.positionValue || "0") || 0;
+      const mark = posVal > 0 && Math.abs(szi) > 0 ? posVal / Math.abs(szi) : parseFloat(p.entryPx);
+      openByCoin[coin] = { szi, entryPx: parseFloat(p.entryPx), lev: p.leverage?.value ?? leverage, upnl: parseFloat(p.unrealizedPnl || "0"), mark };
     });
     collect(main, ""); collect(xyz, "xyz");
 
@@ -179,9 +181,76 @@ async function handle(req: NextRequest) {
       }
     }
 
+    // ── Copy trading: mirror a target wallet 24/7 (config synced from browser) ──
+    const cc = botState.copyConfig;
+    let copyActions = 0;
+    if (cc?.enabled && /^0x[0-9a-fA-F]{40}$/.test(String(cc.targetAddress || ""))) {
+      const symOf = (coin: string) => coin.replace(/^xyz:/, "");
+      const metaByCoin: Record<string, any> = {};
+      Object.values(meta as Record<string, any>).forEach((m: any) => { metaByCoin[m.hlCoin] = m; });
+      try {
+        const td = await (await fetch(`${origin}/api/hl/trader?address=${cc.targetAddress}`)).json();
+        const tPositions: any[] = td.positions || [];
+        const tEquity: number = td.accountValue || 0;
+        const targetCoins = new Set<string>(tPositions.map((p) => p.coin));
+
+        // Opens — copy target positions we don't already hold
+        for (const tp of tPositions) {
+          const sym = symOf(tp.coin); const info = meta[sym]; if (!info) continue;
+          if (Array.isArray(cc.assetFilter) && cc.assetFilter.length && !cc.assetFilter.includes(sym)) continue;
+          if (tp.direction === "long" && cc.copyLongs === false) continue;
+          if (tp.direction === "short" && cc.copyShorts === false) continue;
+          const coin = info.hlCoin;
+          if (openByCoin[coin]) { botState.copyOpen[coin] = true; continue; }
+
+          const lev = Math.max(1, Math.min(tp.leverage || cc.leverageCap || leverage, cc.leverageCap || leverage));
+          const price = tp.size > 0 ? tp.positionValue / tp.size : tp.entryPx;
+          if (!price) continue;
+          let marginUsd: number;
+          if (cc.sizingMode === "fixed") marginUsd = cc.fixedUsd || 10;
+          else if (cc.sizingMode === "multiplier") marginUsd = (tp.positionValue * (cc.multiplier || 1)) / lev;
+          else { const w = tEquity > 0 ? tp.positionValue / tEquity : 0; marginUsd = (w * accountValue) / lev; }
+          marginUsd = Math.min(marginUsd, cc.maxMarginPerTrade || 1e9, available);
+          let notional = marginUsd * lev;
+          if (notional < 10 && available * lev >= 10) notional = 10;
+          if (notional <= 0) continue;
+          const size = notional / price;
+          const isBuy = tp.direction === "long";
+          const sl = isBuy ? price * (1 - 0.23 / lev) : price * (1 + 0.23 / lev);
+          const tpx = isBuy ? price * (1 + 0.30 / lev) : price * (1 - 0.30 / lev);
+          await submitWithAgent(buildSetLeverageAction(info.assetId, Math.min(lev, info.maxLeverage), info.dex !== "xyz"), master).catch(() => {});
+          const od: any = await submitWithAgent(buildOrderAction(info.assetId, isBuy, isBuy ? price * 1.01 : price * 0.99, size, false, "Ioc", info.szDecimals), master);
+          if (od?.status === "ok") {
+            await submitWithAgent(buildPositionTpSlAction(info.assetId, isBuy, size, tpx, sl, info.szDecimals), master).catch(() => {});
+            botState.copyOpen[coin] = true; copyActions++;
+            log.push(`COPY OPEN ${sym}`);
+            await tg(origin, `👥 <b>COPY OPEN</b> ${tp.direction.toUpperCase()} <b>${sym}</b> ${lev}x @ $${price.toFixed(4)}`);
+          }
+        }
+
+        // Closes — target exited a position we copied → close ours
+        for (const coin of Object.keys(botState.copyOpen)) {
+          if (targetCoins.has(coin)) continue;
+          const pos = openByCoin[coin];
+          if (!pos) { delete botState.copyOpen[coin]; continue; }
+          const info = metaByCoin[coin]; if (!info) continue;
+          const isLong = pos.szi > 0; const closeBuy = !isLong;
+          const limitPx = closeBuy ? pos.mark * 1.03 : pos.mark * 0.97;
+          const od: any = await submitWithAgent(buildOrderAction(info.assetId, closeBuy, limitPx, Math.abs(pos.szi), true, "Ioc", info.szDecimals), master);
+          if (od?.status === "ok") {
+            delete botState.copyOpen[coin]; copyActions++;
+            log.push(`COPY CLOSE ${symOf(coin)}`);
+            await tg(origin, `👥 <b>COPY CLOSE</b> ${symOf(coin)} — target exited · PnL ${pos.upnl >= 0 ? "+" : "-"}$${Math.abs(pos.upnl).toFixed(2)}`);
+          }
+        }
+      } catch (e: any) {
+        log.push(`copy error: ${e.message}`);
+      }
+    }
+
     return NextResponse.json({
       ok: true, openPositions: Object.keys(openByCoin).length,
-      tradesToday: serverTradesToday(), available: +available.toFixed(2), traded, log,
+      tradesToday: serverTradesToday(), available: +available.toFixed(2), traded, copyActions, log,
     });
   } catch (e: any) {
     return NextResponse.json({ error: e.message, log }, { status: 500 });

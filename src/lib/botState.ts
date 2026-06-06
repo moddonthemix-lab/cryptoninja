@@ -12,6 +12,10 @@ export const botState = {
   lastCronRun: 0,     // last time the cron actually ran (not deferred)
   lastOpen: {} as Record<string, { szi: number; entryPx: number }>, // for close detection
   trail: {} as Record<string, ServerTrail>,
+  // Copy-trading config synced from the open browser, so the cron can mirror a
+  // target 24/7 when you're away.
+  copyConfig: null as any,
+  copyOpen: {} as Record<string, true>, // coins we hold as copies (for close-follow)
 };
 
 export function serverTradesToday(): number {
