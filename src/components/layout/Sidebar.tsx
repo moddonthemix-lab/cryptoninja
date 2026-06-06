@@ -12,6 +12,7 @@ import {
   PieChart,
   Eye,
   Trophy,
+  ScanEye,
 } from "lucide-react";
 
 const navItems = [
@@ -19,6 +20,7 @@ const navItems = [
   { href: "/portfolio", label: "Portfolio", icon: PieChart },
   { href: "/wallet-tracker", label: "Wallet Tracker", icon: Eye },
   { href: "/top-traders", label: "Top Traders", icon: Trophy },
+  { href: "/deep-eye", label: "Deep Eye", icon: ScanEye },
   { href: "/strategy", label: "Strategies", icon: Zap },
   { href: "/trades", label: "Trade History", icon: History },
 ];
