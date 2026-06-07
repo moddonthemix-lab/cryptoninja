@@ -6,6 +6,7 @@ import { LightweightChart } from "@/components/chart/LightweightChart";
 import { StatsGrid } from "./StatsGrid";
 import { PositionsTable } from "./PositionsTable";
 import { OrderFlow } from "./OrderFlow";
+import { GoalProgress } from "./GoalProgress";
 import { RightPanel } from "./RightPanel";
 import { AssetPicker } from "./AssetPicker";
 import { ASSETS, DEFAULT_WATCHLIST } from "@/types";
@@ -46,6 +47,7 @@ export function DashboardContent() {
 
   return (
     <div className="space-y-3 animate-fade-in">
+      <GoalProgress />
 
 
       {/* Picker + quick watchlist + current price + inline stats */}
