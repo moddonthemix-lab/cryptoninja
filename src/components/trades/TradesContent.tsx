@@ -2,48 +2,75 @@
 
 import { useEffect, useState } from "react";
 import { useStore } from "@/store/useStore";
-import type { Trade } from "@/types";
 import { ASSETS } from "@/types";
-import { cn, formatPnl, timeAgo } from "@/lib/utils";
-import { TrendingUp, TrendingDown, Filter } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Filter, RefreshCw } from "lucide-react";
+
+interface Row {
+  id: string; asset: string; direction: "long" | "short";
+  entryPrice?: number; exitPrice?: number; leverage?: number; size: number;
+  pnl: number; pnlPercent?: number; closeReason?: string; mode: "live" | "paper"; time: number;
+}
+
+const fmtTime = (ms: number) => {
+  const d = Math.floor((Date.now() - ms) / 1000);
+  if (d < 60) return `${d}s`;
+  const m = Math.floor(d / 60); if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60); if (h < 24) return `${h}h`;
+  return new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+};
 
 export function TradesContent() {
-  const { closedTrades, setTrades, tradingMode } = useStore();
+  const { closedTrades, paperEnabled } = useStore();
+  const [live, setLive] = useState<Row[]>([]);
+  const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<"all" | "long" | "short" | "win" | "loss">("all");
 
-  useEffect(() => {
-    fetch("/api/trades?limit=100")
-      .then((r) => r.json())
-      .then((data) => {
-        if (Array.isArray(data)) setTrades(data);
-      });
-  }, [setTrades]);
+  const loadLive = () => {
+    setLoading(true);
+    fetch("/api/hl/fills").then((r) => r.json())
+      .then((d) => { if (Array.isArray(d.rows)) setLive(d.rows); })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  };
+  useEffect(() => { loadLive(); const id = setInterval(loadLive, 30000); return () => clearInterval(id); }, []);
 
-  const filtered = closedTrades.filter((t) => {
+  // Paper trades from the store (only when paper is enabled)
+  const paperRows: Row[] = paperEnabled
+    ? closedTrades.filter((t) => t.mode === "paper").map((t) => ({
+        id: t.id, asset: t.asset, direction: t.direction as "long" | "short",
+        entryPrice: t.entryPrice, exitPrice: t.exitPrice, leverage: t.leverage, size: t.size,
+        pnl: t.pnl ?? 0, pnlPercent: t.pnlPercent, closeReason: t.closeReason, mode: "paper",
+        time: t.closedAt ? new Date(t.closedAt).getTime() : new Date(t.openedAt).getTime(),
+      }))
+    : [];
+
+  const all = [...live, ...paperRows].sort((a, b) => b.time - a.time);
+  const filtered = all.filter((t) => {
     if (filter === "long") return t.direction === "long";
     if (filter === "short") return t.direction === "short";
-    if (filter === "win") return (t.pnl ?? 0) > 0;
-    if (filter === "loss") return (t.pnl ?? 0) < 0;
+    if (filter === "win") return t.pnl > 0;
+    if (filter === "loss") return t.pnl < 0;
     return true;
   });
 
-  const totalPnl = filtered.reduce((s, t) => s + (t.pnl ?? 0), 0);
-  const wins = filtered.filter((t) => (t.pnl ?? 0) > 0).length;
+  const totalPnl = filtered.reduce((s, t) => s + t.pnl, 0);
+  const wins = filtered.filter((t) => t.pnl > 0).length;
   const winRate = filtered.length > 0 ? (wins / filtered.length) * 100 : 0;
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <h1 className="text-xl font-bold text-ninja-text">Trade History</h1>
-        <span className={cn(
-          "text-xs px-2 py-1 rounded-full font-bold",
-          tradingMode === "paper" ? "bg-yellow-500/20 text-yellow-400" : "bg-green-500/20 text-green-400"
-        )}>
-          {tradingMode.toUpperCase()} MODE
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs px-2 py-1 rounded-full font-bold bg-green-500/20 text-green-400">LIVE{paperEnabled ? " + PAPER" : ""}</span>
+          <button onClick={loadLive} title="Refresh" className="p-1.5 rounded-md text-ninja-muted hover:text-ninja-text hover:bg-ninja-border/40">
+            <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+          </button>
+        </div>
       </div>
 
-      {/* Stats row */}
+      {/* Stats */}
       <div className="grid grid-cols-3 gap-3">
         <div className="bg-ninja-card border border-ninja-border rounded-xl p-3 text-center">
           <div className={cn("text-lg font-bold font-mono", totalPnl >= 0 ? "text-ninja-green" : "text-ninja-red")}>
@@ -52,41 +79,32 @@ export function TradesContent() {
           <div className="text-ninja-muted text-xs">Total PnL</div>
         </div>
         <div className="bg-ninja-card border border-ninja-border rounded-xl p-3 text-center">
-          <div className={cn("text-lg font-bold", winRate >= 50 ? "text-ninja-green" : "text-ninja-red")}>
-            {winRate.toFixed(1)}%
-          </div>
+          <div className={cn("text-lg font-bold", winRate >= 50 ? "text-ninja-green" : "text-ninja-red")}>{winRate.toFixed(1)}%</div>
           <div className="text-ninja-muted text-xs">Win Rate</div>
         </div>
         <div className="bg-ninja-card border border-ninja-border rounded-xl p-3 text-center">
           <div className="text-lg font-bold text-ninja-text">{filtered.length}</div>
-          <div className="text-ninja-muted text-xs">Total Trades</div>
+          <div className="text-ninja-muted text-xs">Closed Trades</div>
         </div>
       </div>
 
       {/* Filters */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <Filter size={14} className="text-ninja-muted" />
         {(["all", "long", "short", "win", "loss"] as const).map((f) => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            className={cn(
-              "px-3 py-1 rounded-lg text-xs font-bold capitalize transition-all border",
-              filter === f
-                ? "bg-ninja-accent/20 text-ninja-accent border-ninja-accent/40"
-                : "border-ninja-border text-ninja-muted hover:border-ninja-accent/40"
-            )}
-          >
+          <button key={f} onClick={() => setFilter(f)}
+            className={cn("px-3 py-1 rounded-lg text-xs font-bold capitalize transition-all border",
+              filter === f ? "bg-ninja-accent/20 text-ninja-accent border-ninja-accent/40" : "border-ninja-border text-ninja-muted hover:border-ninja-accent/40")}>
             {f}
           </button>
         ))}
       </div>
 
-      {/* Table */}
+      {/* List */}
       <div className="bg-ninja-card border border-ninja-border rounded-xl overflow-hidden">
         {filtered.length === 0 ? (
           <div className="py-12 text-center text-ninja-muted text-sm">
-            No trades yet — activate a strategy to start trading
+            {loading ? "Loading live history…" : "No closed trades yet."}
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -95,79 +113,40 @@ export function TradesContent() {
                 <tr className="text-ninja-muted">
                   <th className="text-left px-4 py-3">Asset</th>
                   <th className="text-left px-4 py-3">Side</th>
-                  <th className="text-right px-4 py-3">Entry</th>
                   <th className="text-right px-4 py-3">Exit</th>
-                  <th className="text-right px-4 py-3">Lev</th>
                   <th className="text-right px-4 py-3">Size</th>
                   <th className="text-right px-4 py-3">PnL</th>
-                  <th className="text-right px-4 py-3">PnL %</th>
-                  <th className="text-right px-4 py-3">Reason</th>
                   <th className="text-right px-4 py-3">Mode</th>
                   <th className="text-right px-4 py-3">Time</th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((trade) => (
-                  <TradeRow key={trade.id} trade={trade} />
+                {filtered.map((t) => (
+                  <tr key={t.id} className="border-b border-ninja-border/30 hover:bg-ninja-border/10">
+                    <td className="px-4 py-3"><span className="font-bold" style={{ color: ASSETS[t.asset]?.color ?? "#fff" }}>{t.asset}</span></td>
+                    <td className="px-4 py-3">
+                      <span className={cn("px-2 py-0.5 rounded font-bold", t.direction === "long" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400")}>
+                        {t.direction === "long" ? "↑" : "↓"} {t.direction.toUpperCase()}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono">{t.exitPrice ? `$${t.exitPrice.toLocaleString(undefined, { maximumFractionDigits: t.exitPrice < 1 ? 5 : 2 })}` : "—"}</td>
+                    <td className="px-4 py-3 text-right font-mono text-ninja-muted">{t.size}</td>
+                    <td className="px-4 py-3 text-right font-mono">
+                      <span className={t.pnl >= 0 ? "text-ninja-green" : "text-ninja-red"}>{t.pnl >= 0 ? "+" : "-"}${Math.abs(t.pnl).toFixed(2)}</span>
+                      {t.pnlPercent != null && <span className={cn("ml-1.5 text-[10px]", t.pnl >= 0 ? "text-ninja-green/70" : "text-ninja-red/70")}>({t.pnlPercent >= 0 ? "+" : ""}{t.pnlPercent.toFixed(1)}%)</span>}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <span className={cn("text-[10px] px-1.5 py-0.5 rounded", t.mode === "paper" ? "bg-yellow-500/20 text-yellow-400" : "bg-green-500/20 text-green-400")}>{t.mode}</span>
+                    </td>
+                    <td className="px-4 py-3 text-right text-ninja-muted">{fmtTime(t.time)}</td>
+                  </tr>
                 ))}
               </tbody>
             </table>
           </div>
         )}
       </div>
+      <p className="text-ninja-muted/50 text-[11px]">Live history from your Hyperliquid fills (closing trades). {paperEnabled ? "Paper trades from this session included." : "Enable paper in Settings to also show simulated trades."}</p>
     </div>
-  );
-}
-
-function TradeRow({ trade }: { trade: Trade }) {
-  const pnl = trade.pnl ?? 0;
-  const isWin = pnl > 0;
-
-  return (
-    <tr className="border-b border-ninja-border/30 hover:bg-ninja-border/10 transition-colors">
-      <td className="px-4 py-3">
-        <span className="font-bold" style={{ color: ASSETS[trade.asset]?.color ?? "#fff" }}>
-          {trade.asset}
-        </span>
-      </td>
-      <td className="px-4 py-3">
-        <span className={cn(
-          "px-2 py-0.5 rounded font-bold",
-          trade.direction === "long" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
-        )}>
-          {trade.direction === "long" ? "↑" : "↓"} {trade.direction.toUpperCase()}
-        </span>
-      </td>
-      <td className="px-4 py-3 text-right font-mono">${trade.entryPrice.toFixed(2)}</td>
-      <td className="px-4 py-3 text-right font-mono">${trade.exitPrice?.toFixed(2) ?? "—"}</td>
-      <td className="px-4 py-3 text-right font-mono text-ninja-muted">{trade.leverage}x</td>
-      <td className="px-4 py-3 text-right font-mono text-ninja-muted">{trade.size.toFixed(4)}</td>
-      <td className="px-4 py-3 text-right font-mono">
-        <span className={isWin ? "text-ninja-green" : "text-ninja-red"}>
-          {formatPnl(pnl)}
-        </span>
-      </td>
-      <td className="px-4 py-3 text-right font-mono">
-        <span className={isWin ? "text-ninja-green" : "text-ninja-red"}>
-          {(trade.pnlPercent ?? 0) >= 0 ? "+" : ""}{(trade.pnlPercent ?? 0).toFixed(2)}%
-        </span>
-      </td>
-      <td className="px-4 py-3 text-right">
-        <span className="uppercase text-ninja-muted text-xs px-2 py-0.5 bg-ninja-border/30 rounded">
-          {trade.closeReason ?? "—"}
-        </span>
-      </td>
-      <td className="px-4 py-3 text-right">
-        <span className={cn(
-          "text-xs px-1.5 py-0.5 rounded",
-          trade.mode === "paper" ? "bg-yellow-500/20 text-yellow-400" : "bg-green-500/20 text-green-400"
-        )}>
-          {trade.mode}
-        </span>
-      </td>
-      <td className="px-4 py-3 text-right text-ninja-muted">
-        {timeAgo(trade.closedAt ?? trade.openedAt)}
-      </td>
-    </tr>
   );
 }
