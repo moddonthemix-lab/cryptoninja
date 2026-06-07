@@ -33,6 +33,14 @@ export const LightweightChart = memo(function LightweightChart({
   const lastBarRef = useRef<Bar | null>(null);
   const [timeframe, setTimeframe] = useState<string>("1h");
   const [loading, setLoading] = useState(true);
+  // Shorter chart on phones so it doesn't dominate the screen
+  const [chartH, setChartH] = useState(height);
+  useEffect(() => {
+    const calc = () => setChartH(window.innerWidth < 640 ? Math.min(height, 320) : height);
+    calc();
+    window.addEventListener("resize", calc);
+    return () => window.removeEventListener("resize", calc);
+  }, [height]);
   const [empty, setEmpty] = useState(false);
 
   // Live last price from the store (updates ~every 30s via the market poll)
@@ -92,6 +100,9 @@ export const LightweightChart = memo(function LightweightChart({
       priceLinesRef.current = [];
     };
   }, [height]);
+
+  // Apply responsive height changes (mobile ↔ desktop)
+  useEffect(() => { chartRef.current?.applyOptions({ height: chartH }); }, [chartH]);
 
   // Load candles on asset / timeframe change, then poll for live updates
   useEffect(() => {
@@ -222,7 +233,7 @@ export const LightweightChart = memo(function LightweightChart({
       </div>
 
       <div className="relative">
-        <div ref={containerRef} style={{ height }} />
+        <div ref={containerRef} style={{ height: chartH }} />
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center text-ninja-muted text-xs pointer-events-none">
             Loading chart…

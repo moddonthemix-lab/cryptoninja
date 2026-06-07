@@ -193,7 +193,51 @@ export function PositionsTable() {
               No open positions
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <>
+            {/* Mobile: card list */}
+            <div className="sm:hidden p-2 space-y-2">
+              {positions.map((pos) => {
+                const mark = marketData[pos.asset]?.price;
+                const margin = (pos.size * pos.entryPrice) / pos.leverage;
+                let livePnl = 0, livePnlPct = 0;
+                if (pos.isLive && pos.unrealizedPnl != null) { livePnl = pos.unrealizedPnl; livePnlPct = margin > 0 ? (livePnl / margin) * 100 : 0; }
+                else if (mark != null) { const d = pos.direction === "long" ? mark - pos.entryPrice : pos.entryPrice - mark; livePnl = d * pos.size * pos.leverage; livePnlPct = (d / pos.entryPrice) * 100 * pos.leverage; }
+                const isLong = pos.direction === "long";
+                const exitPrice = mark ?? pos.entryPrice;
+                return (
+                  <div key={pos.id} className={cn("rounded-lg border p-2.5 space-y-1.5", isLong ? "border-green-500/30 bg-green-500/5" : "border-red-500/30 bg-red-500/5")}>
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-1.5 font-bold text-sm">
+                        <span style={{ color: ASSETS[pos.asset]?.color }}>{pos.asset}</span>
+                        <span className={cn("text-[10px] px-1.5 py-0.5 rounded", isLong ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400")}>{pos.direction.toUpperCase()} {pos.leverage}x</span>
+                      </span>
+                      <span className={cn("font-mono font-bold text-sm", livePnl >= 0 ? "text-ninja-green" : "text-ninja-red")}>
+                        {livePnl >= 0 ? "+" : ""}${Math.abs(livePnl).toFixed(2)} <span className="text-xs">({livePnlPct >= 0 ? "+" : ""}{livePnlPct.toFixed(1)}%)</span>
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-1 text-[11px] font-mono text-ninja-muted">
+                      <span>Entry ${pos.entryPrice.toFixed(2)}</span>
+                      <span className="text-center">Mark {mark != null ? `$${mark.toFixed(2)}` : "—"}</span>
+                      <span className="text-right">Mgn ${margin.toFixed(2)}</span>
+                      <span className="text-ninja-red">SL {pos.stopLoss ? `$${pos.stopLoss.toFixed(2)}` : "—"}</span>
+                      <span className="text-center text-ninja-green">TP {pos.takeProfit ? `$${pos.takeProfit.toFixed(2)}` : "—"}</span>
+                      <span className="text-right">{pos.size.toFixed(4)}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 pt-1">
+                      {pos.isLive && (
+                        <button onClick={() => openTpslEditor(pos)} className="flex-1 py-1.5 rounded border border-ninja-border text-ninja-muted hover:text-yellow-400 text-xs font-bold">TP/SL</button>
+                      )}
+                      <button onClick={() => setSharePos({ asset: pos.asset, direction: pos.direction, leverage: pos.leverage, entryPrice: pos.entryPrice, markPrice: mark ?? pos.entryPrice, pnlPct: livePnlPct })}
+                        className="px-3 py-1.5 rounded border border-ninja-border text-ninja-muted hover:text-ninja-accent"><Share2 size={12} /></button>
+                      <button onClick={() => handleClose(pos, exitPrice)} disabled={closing === pos.id}
+                        className="flex-1 py-1.5 rounded border border-ninja-border text-ninja-muted hover:text-red-400 hover:bg-red-500/10 text-xs font-bold flex items-center justify-center gap-1"><X size={12} /> Close</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {/* Desktop: table */}
+            <div className="hidden sm:block overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="text-ninja-muted border-b border-ninja-border/60 uppercase tracking-wide">
@@ -347,6 +391,7 @@ export function PositionsTable() {
                 </tbody>
               </table>
             </div>
+            </>
           )}
         </>
       )}
