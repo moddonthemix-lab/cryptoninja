@@ -17,7 +17,14 @@ export function useAutoTraderStatus(): AutoTraderStatus | null {
 
 export function AutoTraderProvider({ children }: { children: React.ReactNode }) {
   const botAsset = useStore((s) => s.botAsset);
+  const paperEnabled = useStore((s) => s.paperEnabled);
+  const tradingMode = useStore((s) => s.tradingMode);
   const status = useAutoTrader(botAsset);
+
+  // Paper disabled → force LIVE so nothing can simulate (covers persisted state)
+  useEffect(() => {
+    if (!paperEnabled && tradingMode !== "live") useStore.getState().setTradingMode("live");
+  }, [paperEnabled, tradingMode]);
 
   // Heartbeat so the server cron defers to this browser while it's open, and
   // syncs the copy config + currently-copied coins so the cron can take over.

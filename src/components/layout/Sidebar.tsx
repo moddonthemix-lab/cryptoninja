@@ -13,6 +13,7 @@ import {
   Eye,
   Trophy,
   ScanEye,
+  Settings,
 } from "lucide-react";
 
 export const navItems = [
@@ -23,6 +24,7 @@ export const navItems = [
   { href: "/deep-eye", label: "Deep Eye", icon: ScanEye },
   { href: "/strategy", label: "Strategies", icon: Zap },
   { href: "/trades", label: "Trade History", icon: History },
+  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 export function Sidebar() {

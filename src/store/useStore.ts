@@ -34,7 +34,7 @@ interface AppState {
   autoTradeEnabled: boolean;
   autoTradeLeverage: number;
   botAsset: Asset;            // the single ticker the bot watches/trades
-  paperTradingEnabled: boolean; // when off, the bot won't open simulated trades
+  paperEnabled: boolean;      // master: when off, paper mode is hidden + app is live-only
   botUseAI: boolean;          // when off, the bot decides rule-based only (no Claude)
   learningEnabled: boolean;   // feed recent trade outcomes back to the AI
   autoTradeCount: number;      // trades opened today
@@ -95,7 +95,7 @@ interface AppState {
   setAutoTradeLeverage: (n: number) => void;
   toggleLearning: () => void;
   setBotAsset: (asset: Asset) => void;
-  togglePaperTrading: () => void;
+  setPaperEnabled: (v: boolean) => void;
   toggleBotAI: () => void;
   recordAutoTrade: () => void;
   getTradesToday: () => number;
@@ -137,7 +137,7 @@ export const useStore = create<AppState>()(
       autoTradeEnabled: false,
       autoTradeLeverage: 3,
       botAsset: "BTC",
-      paperTradingEnabled: true,
+      paperEnabled: false,
       botUseAI: true,
       learningEnabled: true,
       autoTradeCount: 0,
@@ -237,7 +237,8 @@ export const useStore = create<AppState>()(
       setAutoTradeLeverage: (n) => set({ autoTradeLeverage: n }),
       toggleLearning: () => set((s) => ({ learningEnabled: !s.learningEnabled })),
       setBotAsset: (asset) => set({ botAsset: asset }),
-      togglePaperTrading: () => set((s) => ({ paperTradingEnabled: !s.paperTradingEnabled })),
+      // Disabling paper forces the app back to LIVE so nothing simulates.
+      setPaperEnabled: (v) => set(() => v ? { paperEnabled: true } : { paperEnabled: false, tradingMode: "live" as const }),
       toggleBotAI: () => set((s) => ({ botUseAI: !s.botUseAI })),
       // Use LOCAL calendar date (en-CA → YYYY-MM-DD) so the daily cap resets at
       // the user's local midnight, not UTC midnight.
@@ -292,7 +293,7 @@ export const useStore = create<AppState>()(
         autoTradeLeverage: state.autoTradeLeverage,
         autoTradeEnabled: state.autoTradeEnabled,
         botAsset: state.botAsset,
-        paperTradingEnabled: state.paperTradingEnabled,
+        paperEnabled: state.paperEnabled,
         botUseAI: state.botUseAI,
         learningEnabled: state.learningEnabled,
         autoTradeCount: state.autoTradeCount,

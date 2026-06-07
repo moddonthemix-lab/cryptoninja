@@ -37,7 +37,7 @@ export function AutoTrader() {
     autoTradeLeverage, setAutoTradeLeverage,
     botAsset, setBotAsset, tradingMode, setTradingMode, emergencyStop,
     openPositions, paperBalance, getTradesToday, resetAutoTradeCount,
-    learningEnabled, toggleLearning, paperTradingEnabled, togglePaperTrading,
+    learningEnabled, toggleLearning, paperEnabled,
     botUseAI, toggleBotAI,
   } = useStore();
 
@@ -103,19 +103,21 @@ export function AutoTrader() {
         </div>
       </div>
 
-      {/* Mode: clean PAPER | LIVE segmented switch */}
-      <div className="grid grid-cols-2 gap-1 bg-ninja-bg/50 rounded-lg p-1">
-        <button
-          onClick={() => setTradingMode("paper")}
-          disabled={autoTradeEnabled}
-          className={cn(
-            "py-1.5 rounded-md text-xs font-bold transition-all",
-            !isLive ? "bg-yellow-500/20 text-yellow-400" : "text-ninja-muted hover:text-ninja-text",
-            autoTradeEnabled && "opacity-50 cursor-not-allowed"
-          )}
-        >
-          📄 Paper
-        </button>
+      {/* Mode switch — PAPER only shown when enabled in Settings */}
+      <div className={cn("grid gap-1 bg-ninja-bg/50 rounded-lg p-1", paperEnabled ? "grid-cols-2" : "grid-cols-1")}>
+        {paperEnabled && (
+          <button
+            onClick={() => setTradingMode("paper")}
+            disabled={autoTradeEnabled}
+            className={cn(
+              "py-1.5 rounded-md text-xs font-bold transition-all",
+              !isLive ? "bg-yellow-500/20 text-yellow-400" : "text-ninja-muted hover:text-ninja-text",
+              autoTradeEnabled && "opacity-50 cursor-not-allowed"
+            )}
+          >
+            📄 Paper
+          </button>
+        )}
         <button
           onClick={() => setTradingMode("live")}
           disabled={autoTradeEnabled}
@@ -218,17 +220,6 @@ export function AutoTrader() {
         </button>
       </div>
 
-      {/* Paper trading on/off — when off the bot won't open simulated trades */}
-      <div className="flex items-center justify-between text-xs">
-        <span className="text-ninja-muted flex items-center gap-1.5">📄 Paper trades</span>
-        <button
-          onClick={togglePaperTrading}
-          className={cn("relative w-9 h-5 rounded-full transition-colors flex-shrink-0", paperTradingEnabled ? "bg-yellow-500" : "bg-ninja-border")}
-          title={paperTradingEnabled ? "Bot may open paper trades in Paper mode" : "Bot will NOT open paper trades"}
-        >
-          <span className={cn("absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform", paperTradingEnabled ? "translate-x-[18px]" : "translate-x-0.5")} />
-        </button>
-      </div>
 
       {/* Learning toggle — feeds recent trade outcomes back to the AI */}
       <div className="flex items-center justify-between text-xs">
