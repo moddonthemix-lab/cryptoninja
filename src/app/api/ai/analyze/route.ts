@@ -28,9 +28,22 @@ export async function POST(req: NextRequest) {
   }
 }
 
+// Cache the all-markets snapshot briefly so every open tab / refresh shares one
+// upstream fetch instead of re-pulling both dexes each poll. Well under the 30s
+// client poll, so it adds no meaningful staleness — and the bot uses its own
+// fresh candles for decisions, so this never affects trading.
+let mdCache: { ts: number; data: any } | null = null;
+const MD_TTL_MS = 8_000;
+
 export async function GET(req: NextRequest) {
   try {
-    const allMarketData = await fetchAllMarketData();
+    let allMarketData: any;
+    if (mdCache && Date.now() - mdCache.ts < MD_TTL_MS) {
+      allMarketData = mdCache.data;
+    } else {
+      allMarketData = await fetchAllMarketData();
+      mdCache = { ts: Date.now(), data: allMarketData };
+    }
 
     // Only run the (slow, costly) AI overview when explicitly requested.
     // The dashboard price poll calls this every 30s and just needs prices.
