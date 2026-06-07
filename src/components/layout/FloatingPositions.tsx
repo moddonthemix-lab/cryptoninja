@@ -24,10 +24,10 @@ export function FloatingPositions() {
   const [closing, setClosing] = useState<string | null>(null);
   const drag = useRef<{ dx: number; dy: number } | null>(null);
 
-  // Initial position: bottom-right
+  // Initial position: bottom-right, clamped to the viewport (mobile-safe)
   useEffect(() => {
-    const w = 268;
-    setPos({ x: window.innerWidth - w - 20, y: window.innerHeight - 320 });
+    const w = Math.min(260, window.innerWidth * 0.88);
+    setPos({ x: Math.max(8, window.innerWidth - w - 12), y: Math.max(60, window.innerHeight - 340) });
   }, []);
 
   const rows: Row[] = isLive
@@ -85,7 +85,7 @@ export function FloatingPositions() {
 
   return (
     <div
-      className="fixed z-[60] w-[268px] select-none"
+      className="fixed z-[60] w-[min(260px,88vw)] select-none"
       style={{ left: pos.x, top: pos.y }}
     >
       <div className="bg-ninja-card border border-ninja-accent/40 rounded-xl shadow-2xl shadow-black/50 overflow-hidden">

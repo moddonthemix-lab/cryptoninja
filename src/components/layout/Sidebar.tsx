@@ -15,7 +15,7 @@ import {
   ScanEye,
 } from "lucide-react";
 
-const navItems = [
+export const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/portfolio", label: "Portfolio", icon: PieChart },
   { href: "/wallet-tracker", label: "Wallet Tracker", icon: Eye },

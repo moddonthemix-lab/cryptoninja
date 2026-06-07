@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { Bot } from "lucide-react";
 import { useHyperliquid } from "@/hooks/useHyperliquid";
 import { NotificationsBell } from "./NotificationsBell";
+import { MobileNav } from "./MobileNav";
 
 export function TopBar() {
   const { marketData, tradingMode, setTradingMode, selectedAsset, setSelectedAsset } = useStore();
@@ -13,7 +14,8 @@ export function TopBar() {
   const equity = totalBalance > 0 ? totalBalance : null;
 
   return (
-    <header className="bg-ninja-card border-b border-ninja-border px-4 py-2 flex items-center gap-4">
+    <header className="bg-ninja-card border-b border-ninja-border px-2 sm:px-4 py-2 flex items-center gap-2 sm:gap-4">
+      <MobileNav />
       {/* Scrolling ticker tape — every market */}
       <div className="flex items-center gap-1 flex-1 min-w-0 overflow-x-auto no-scrollbar">
         {ASSET_LIST.map((asset) => {
