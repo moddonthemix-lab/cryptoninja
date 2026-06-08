@@ -115,7 +115,36 @@ export function TopTradersContent() {
       {loading ? (
         <div className="text-center text-ninja-muted text-sm py-10">Loading leaderboard…</div>
       ) : (
-        <div className="bg-ninja-card border border-ninja-border rounded-xl overflow-x-auto">
+        <>
+        {/* Mobile cards */}
+        <div className="sm:hidden space-y-2">
+          {display.map(({ r, w }, i) => (
+            <div key={r.address} className="bg-ninja-card border border-ninja-border rounded-xl p-3 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-sm text-ninja-text">{i + 1}. {r.name || short(r.address)}</span>
+                <span className={cn("font-mono font-bold text-sm", r.roi >= 0 ? "text-ninja-green" : "text-ninja-red")}>{r.roi >= 0 ? "+" : ""}{r.roi.toFixed(1)}%</span>
+              </div>
+              <div className="flex items-center justify-between text-[11px] font-mono text-ninja-muted">
+                <span>Eq {fmtUsd(r.accountValue)} · PnL {r.pnl >= 0 ? "+" : ""}{fmtUsd(r.pnl)}</span>
+                <span>{w ? <span className={w.winRate >= 50 ? "text-ninja-green" : "text-yellow-400"}>{w.winRate.toFixed(0)}% · {w.trades}t</span> : "—"}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button onClick={() => addTrackedWallet(r.address, r.name || "")} disabled={isTracked(r.address) || trackedWallets.length >= 10}
+                  className={cn("flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded border text-[11px] font-bold",
+                    isTracked(r.address) ? "border-ninja-accent/40 text-ninja-accent bg-ninja-accent/10" : "border-ninja-border text-ninja-muted")}>
+                  <Eye size={11} /> {isTracked(r.address) ? "Tracked" : "Track"}
+                </button>
+                <button onClick={() => setCopyTrade({ targetAddress: r.address, enabled: true, assetFilter: [] })}
+                  className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded bg-ninja-accent text-white text-[11px] font-bold">
+                  <CopyIcon size={11} /> Copy
+                </button>
+              </div>
+            </div>
+          ))}
+          {display.length === 0 && <div className="text-center text-ninja-muted text-xs py-6">No traders match.</div>}
+        </div>
+        {/* Desktop table */}
+        <div className="hidden sm:block bg-ninja-card border border-ninja-border rounded-xl overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
               <tr className="text-ninja-muted border-b border-ninja-border/60 uppercase tracking-wide">
@@ -177,6 +206,7 @@ export function TopTradersContent() {
           </table>
           {display.length === 0 && <div className="px-4 py-6 text-center text-ninja-muted text-xs">No traders match (try lowering min trades).</div>}
         </div>
+        </>
       )}
 
       <p className="text-ninja-muted/50 text-[11px]">

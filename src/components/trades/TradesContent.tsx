@@ -95,7 +95,29 @@ export function TradesContent() {
             {loading ? "Loading live history…" : "No closed trades yet."}
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          {/* Mobile cards */}
+          <div className="sm:hidden divide-y divide-ninja-border/40">
+            {filtered.map((t) => (
+              <div key={t.id} className="flex items-center justify-between gap-2 px-3 py-2.5">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-bold" style={{ color: ASSETS[t.asset]?.color ?? "#fff" }}>{t.asset}</span>
+                    <span className={cn("text-[10px] px-1.5 py-0.5 rounded font-bold", t.direction === "long" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400")}>{t.direction.toUpperCase()}</span>
+                  </div>
+                  <div className="text-[10px] text-ninja-muted/70 font-mono mt-0.5">
+                    {t.entryPrice ? `$${t.entryPrice.toFixed(t.entryPrice < 1 ? 5 : 2)}` : "—"} → {t.exitPrice ? `$${t.exitPrice.toFixed(t.exitPrice < 1 ? 5 : 2)}` : "—"} · {fmtTime(t.time)}
+                  </div>
+                </div>
+                <div className="text-right font-mono">
+                  <div className={cn("font-bold text-sm", t.pnl >= 0 ? "text-ninja-green" : "text-ninja-red")}>{t.pnl >= 0 ? "+" : "-"}${Math.abs(t.pnl).toFixed(2)}</div>
+                  {t.pnlPercent != null && <div className={cn("text-[10px]", t.pnl >= 0 ? "text-ninja-green/70" : "text-ninja-red/70")}>{t.pnlPercent >= 0 ? "+" : ""}{t.pnlPercent.toFixed(1)}%</div>}
+                </div>
+              </div>
+            ))}
+          </div>
+          {/* Desktop table */}
+          <div className="hidden sm:block overflow-x-auto">
             <table className="w-full text-xs">
               <thead className="border-b border-ninja-border bg-ninja-border/10">
                 <tr className="text-ninja-muted">
@@ -134,6 +156,7 @@ export function TradesContent() {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </div>
       <p className="text-ninja-muted/50 text-[11px]">Live history from your Hyperliquid fills (closing trades).</p>
