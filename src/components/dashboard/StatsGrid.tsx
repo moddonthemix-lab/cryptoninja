@@ -1,48 +1,33 @@
 "use client";
 
-import { useStore } from "@/store/useStore";
+import { useEffect, useState } from "react";
+import { useHyperliquid } from "@/hooks/useHyperliquid";
 import { cn } from "@/lib/utils";
 
+// Live account stats from Hyperliquid (equity, realized PnL, win rate, trades).
 export function StatsGrid() {
-  const { paperBalance, openPositions, closedTrades, tradingMode, activeStrategyId, strategies } = useStore();
+  const { totalBalance, livePositions } = useHyperliquid();
+  const [wr, setWr] = useState<{ winRate: number; trades: number; realized: number } | null>(null);
 
-  const wins = closedTrades.filter((t) => (t.pnl ?? 0) > 0).length;
-  const totalClosed = closedTrades.length;
-  const winRate = totalClosed > 0 ? (wins / totalClosed) * 100 : 0;
-  const totalPnl = closedTrades.reduce((sum, t) => sum + (t.pnl ?? 0), 0);
-  const activeStrategy = strategies.find((s) => s.id === activeStrategyId);
+  useEffect(() => {
+    const load = () => fetch("/api/hl/winrate").then((r) => r.json())
+      .then((d) => { if (!d.error) setWr(d); }).catch(() => {});
+    load();
+    const id = setInterval(load, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const realized = wr?.realized ?? 0;
+  const winRate = wr?.winRate ?? 0;
+  const trades = wr?.trades ?? 0;
 
   const stats = [
-    {
-      label: tradingMode === "paper" ? "Paper Bal" : "Balance",
-      value: `$${paperBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-      color: "text-ninja-accent",
-    },
-    {
-      label: "PnL",
-      value: `${totalPnl >= 0 ? "+" : ""}$${Math.abs(totalPnl).toFixed(2)}`,
-      color: totalPnl >= 0 ? "text-ninja-green" : "text-ninja-red",
-    },
-    {
-      label: "Win Rate",
-      value: `${winRate.toFixed(1)}%`,
-      color: winRate >= 50 ? "text-ninja-green" : "text-ninja-red",
-    },
-    {
-      label: "Open",
-      value: openPositions.filter((p) => p.isOpen).length.toString(),
-      color: "text-ninja-yellow",
-    },
-    {
-      label: "Trades",
-      value: totalClosed.toString(),
-      color: "text-ninja-muted",
-    },
-    {
-      label: "Strategy",
-      value: activeStrategy?.name ?? "None",
-      color: activeStrategy ? "text-ninja-green" : "text-ninja-muted",
-    },
+    { label: "Equity", value: `$${totalBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, color: "text-ninja-accent" },
+    { label: "Realized PnL", value: `${realized >= 0 ? "+" : "-"}$${Math.abs(realized).toFixed(2)}`, color: realized >= 0 ? "text-ninja-green" : "text-ninja-red" },
+    { label: "Win Rate", value: wr ? `${winRate.toFixed(1)}%` : "—", color: winRate >= 50 ? "text-ninja-green" : "text-yellow-400" },
+    { label: "Open", value: livePositions.length.toString(), color: "text-yellow-400" },
+    { label: "Trades", value: wr ? trades.toString() : "—", color: "text-ninja-muted" },
+    { label: "Mode", value: "LIVE", color: "text-ninja-green" },
   ];
 
   return (
