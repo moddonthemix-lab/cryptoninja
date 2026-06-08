@@ -367,14 +367,16 @@ export async function POST(req: NextRequest) {
     // A persistent higher-TF bias (e.g. price above yesterday's high all day)
     // must NOT cancel a fresh 1H break in the opposite direction. Higher
     // timeframes (FTFC) inform confidence, not direction.
+    // Prioritise HIGHER timeframes: take a clean DAILY break first, then 4H,
+    // then 1H. Daily/4H are the primary setups; 1H is a lower-priority fallback.
     let breakDir: "bullish" | "bearish" | "none" = "none";
     let whichBreak: "daily" | "4H" | "1H" | "none" = "none";
-    if (cH1Bull.confirmed && !cH1Bear.confirmed) { breakDir = "bullish"; whichBreak = "1H"; }
-    else if (cH1Bear.confirmed && !cH1Bull.confirmed) { breakDir = "bearish"; whichBreak = "1H"; }
+    if (cDailyBull.confirmed && !cDailyBear.confirmed) { breakDir = "bullish"; whichBreak = "daily"; }
+    else if (cDailyBear.confirmed && !cDailyBull.confirmed) { breakDir = "bearish"; whichBreak = "daily"; }
     else if (cH4Bull.confirmed && !cH4Bear.confirmed) { breakDir = "bullish"; whichBreak = "4H"; }
     else if (cH4Bear.confirmed && !cH4Bull.confirmed) { breakDir = "bearish"; whichBreak = "4H"; }
-    else if (cDailyBull.confirmed && !cDailyBear.confirmed) { breakDir = "bullish"; whichBreak = "daily"; }
-    else if (cDailyBear.confirmed && !cDailyBull.confirmed) { breakDir = "bearish"; whichBreak = "daily"; }
+    else if (cH1Bull.confirmed && !cH1Bear.confirmed) { breakDir = "bullish"; whichBreak = "1H"; }
+    else if (cH1Bear.confirmed && !cH1Bull.confirmed) { breakDir = "bearish"; whichBreak = "1H"; }
 
     // Trade direction FOLLOWS the break. FTFC is no longer a gate — it's folded
     // into the confidence score below (agree = boost, conflict = penalty).
@@ -442,6 +444,8 @@ export async function POST(req: NextRequest) {
       b.push({ label: "Stop run in trade direction", points: 10, active: stopRun.detected && stopRun.direction === tradeDir });
       b.push({ label: "15m confirmation", points: 5, active: confirmedVia15m });
       b.push({ label: "London session", points: 5, active: inManipulation });
+      const tfPts = whichBreak === "daily" ? 12 : whichBreak === "4H" ? 8 : -6;
+      b.push({ label: `${whichBreak.toUpperCase()} break (timeframe priority)`, points: tfPts, active: true });
       return b;
     };
     const confidenceBreakdown = buildBreakdown();
@@ -554,6 +558,10 @@ Confidence drivers: FTFC agrees with break (+20) / conflicts (-15); intraday + G
     if (stopRun.detected && stopRun.direction === tradeDir) confidence += 10;
     if (confirmedVia15m) confidence += 5;
     if (inManipulation) confidence += 5;
+    // Timeframe priority: favor daily/4H setups; 1H is a lower-priority fallback
+    // (needs extra confluence to clear the confidence gate).
+    const tfBoost = whichBreak === "daily" ? 12 : whichBreak === "4H" ? 8 : -6;
+    confidence += tfBoost;
     confidence = Math.min(100, Math.max(0, confidence));
 
     let tpPct: number;
@@ -651,8 +659,9 @@ A ${tradeDir} break of the prior ${whichBreak} ${tradeDir === "bullish" ? "high"
 
 ${contextBlock}${journal}
 
-Best setup: break + intraday TFs agree + GB bias agrees + at GB level + stop run + London session.
-If the setup is weak (no GB level, no stop run, conflicting BTC/FTFC, or it resembles your recent losses), return shouldTrade=false.
+Timeframe priority: this is a ${whichBreak} break. DAILY and 4H breaks are the primary, highest-quality setups — favor them. A 1H break is a lower-priority fallback: only take it with strong extra confluence (GB level + intraday agreement + stop run), otherwise return shouldTrade=false.
+Best setup: a daily or 4H break of prior structure + intraday TFs agree + GB bias agrees + at GB level + stop run + London session.
+If the setup is weak (1H-only without confluence, no GB level, no stop run, conflicting BTC/FTFC, or it resembles your recent losses), return shouldTrade=false.
 
 Return ONLY this JSON:
 { "shouldTrade": true|false, "direction": "${tradeSide}", "confidence": 0-100, "tpPct": 25-100, "isSwing": true|false, "trailTriggerPct": 15-40, "trailRetreatPct": 20-45, "reasoning": "one concise sentence on WHY (FTFC, GB level, TFs, flow)" }`;
