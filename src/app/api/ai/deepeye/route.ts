@@ -45,7 +45,13 @@ QUESTION: ${question}`;
     });
     const answer = msg.content[0].type === "text" ? msg.content[0].text : "No answer.";
 
-    return NextResponse.json({ answer, scanned: snap.wallets.length, ts: snap.ts });
+    // Compact wallet list so the UI can offer one-tap Track / Copy
+    const wallets = snap.wallets.slice(0, 25).map((w) => ({
+      address: w.address, name: w.name, accountValue: w.accountValue, roi: w.roi,
+      assets: Array.from(new Set(w.positions.map((p) => p.sym))).slice(0, 6),
+    }));
+
+    return NextResponse.json({ answer, scanned: snap.wallets.length, ts: snap.ts, wallets });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
