@@ -642,6 +642,20 @@ Confidence drivers: FTFC agrees with break (+20) / conflicts (-15); intraday + G
     let vetoed = false;
     let vetoReason = "";
 
+    // ── Quality gate: trade daily/4H breaks freely; only take a 1H break when the
+    //    setup is genuinely strong (don't hop into marginal 1H plays). ──
+    if (whichBreak === "1H") {
+      const strongConfluence =
+        atGBLevel ||
+        (stopRun.detected && stopRun.direction === tradeDir) ||
+        intradayAgreement >= 1 ||
+        flowAgree(volFlowDir) || flowAgree(oiBiasDir);
+      if (confidence < 72 || !strongConfluence) {
+        vetoed = true;
+        vetoReason = `1H break without strong confluence (conf ${confidence}%) — waiting for a 4H/daily setup`;
+      }
+    }
+
     // ── Take-profit snapped to STRUCTURE (Goldbach target → else next TheStrat
     //    key level). The stop-loss + trailing are unchanged (−23% then ratchet). ──
     let tpTarget: number | null = null;
@@ -693,7 +707,7 @@ Confidence drivers: FTFC agrees with break (+20) / conflicts (-15); intraday + G
     // Only escalate to Claude for QUALIFIED candidates (rule confidence ≥ min),
     // and at most once per asset per cooldown window. This is what keeps credit
     // usage to a few calls a day instead of one per scan.
-    const qualifies = confidence >= minConfidence;
+    const qualifies = confidence >= minConfidence && !vetoed;
     const cached = lastClaude.get(asset) as any;
     const cooling = cached && cached.ts > Date.now() - CLAUDE_COOLDOWN_MS;
 
