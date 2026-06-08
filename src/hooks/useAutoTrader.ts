@@ -378,12 +378,6 @@ export function useAutoTrader(asset: Asset) {
         setStatus((s) => ({ ...s, state: "idle" }));
         return;
       }
-      // Paper trading switched off → don't open simulated trades
-      if (gate.tradingMode !== "live" && !gate.paperEnabled) {
-        addLog(`Paper trading is OFF — not opening a simulated trade`, "info");
-        setStatus((s) => ({ ...s, state: "idle", lastSignal: "Paper trading off" }));
-        return;
-      }
 
       const { direction, confidence, entry, tp, tpPct, reasoning,
         trailTriggerPct = 20, trailRetreatPct = 35 } = data;

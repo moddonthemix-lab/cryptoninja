@@ -9,7 +9,7 @@ import { NotificationsBell } from "./NotificationsBell";
 import { MobileNav } from "./MobileNav";
 
 export function TopBar() {
-  const { marketData, tradingMode, setTradingMode, selectedAsset, setSelectedAsset, paperEnabled } = useStore();
+  const { marketData, selectedAsset, setSelectedAsset } = useStore();
   const { totalBalance } = useHyperliquid();
   const equity = totalBalance > 0 ? totalBalance : null;
 
@@ -50,32 +50,13 @@ export function TopBar() {
         })}
       </div>
 
-      {/* Trading mode toggle — PAPER only when enabled in Settings */}
+      {/* Live-only platform */}
       <div className="flex items-center gap-1 bg-ninja-border/30 rounded-lg p-1 flex-shrink-0">
-        {paperEnabled && (
-          <button
-            onClick={() => setTradingMode("paper")}
-            className={cn(
-              "px-3 py-1 rounded text-xs font-bold transition-all",
-              tradingMode === "paper" ? "bg-yellow-500/30 text-yellow-400" : "text-ninja-muted hover:text-ninja-text"
-            )}
-          >
-            PAPER
-          </button>
-        )}
-        <button
-          onClick={() => setTradingMode("live")}
-          className={cn(
-            "px-3 py-1 rounded text-xs font-bold transition-all",
-            tradingMode === "live" ? "bg-green-500/30 text-green-400" : "text-ninja-muted hover:text-ninja-text"
-          )}
-        >
-          LIVE
-        </button>
+        <span className="px-3 py-1 rounded text-xs font-bold bg-green-500/30 text-green-400">LIVE</span>
       </div>
 
       {/* HL account equity (live mode only) */}
-      {tradingMode === "live" && equity !== null && (
+      {equity !== null && (
         <div className="flex items-center gap-1.5 text-xs flex-shrink-0">
           <Bot size={12} className="text-ninja-accent" />
           <span className="text-ninja-muted hidden md:inline">Equity</span>

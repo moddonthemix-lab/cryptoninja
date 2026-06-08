@@ -35,9 +35,9 @@ export function AutoTrader() {
   const {
     autoTradeEnabled, toggleAutoTrade,
     autoTradeLeverage, setAutoTradeLeverage,
-    botAsset, setBotAsset, tradingMode, setTradingMode, emergencyStop,
-    openPositions, paperBalance, getTradesToday, resetAutoTradeCount,
-    learningEnabled, toggleLearning, paperEnabled,
+    botAsset, setBotAsset, emergencyStop,
+    openPositions, getTradesToday, resetAutoTradeCount,
+    learningEnabled, toggleLearning,
     botUseAI, toggleBotAI,
   } = useStore();
 
@@ -47,7 +47,6 @@ export function AutoTrader() {
     lastBreakdown: null, lastBreakdownDir: null, log: [],
   };
   const activePos = openPositions.find((p) => p.isOpen && p.asset === botAsset);
-  const isLive = tradingMode === "live";
   const tradesToday = getTradesToday();
   const MAX_TRADES = 5;
 
@@ -101,34 +100,6 @@ export function AutoTrader() {
             )} />
           </button>
         </div>
-      </div>
-
-      {/* Mode switch — PAPER only shown when enabled in Settings */}
-      <div className={cn("grid gap-1 bg-ninja-bg/50 rounded-lg p-1", paperEnabled ? "grid-cols-2" : "grid-cols-1")}>
-        {paperEnabled && (
-          <button
-            onClick={() => setTradingMode("paper")}
-            disabled={autoTradeEnabled}
-            className={cn(
-              "py-1.5 rounded-md text-xs font-bold transition-all",
-              !isLive ? "bg-yellow-500/20 text-yellow-400" : "text-ninja-muted hover:text-ninja-text",
-              autoTradeEnabled && "opacity-50 cursor-not-allowed"
-            )}
-          >
-            📄 Paper
-          </button>
-        )}
-        <button
-          onClick={() => setTradingMode("live")}
-          disabled={autoTradeEnabled}
-          className={cn(
-            "py-1.5 rounded-md text-xs font-bold transition-all",
-            isLive ? "bg-green-500/20 text-green-400" : "text-ninja-muted hover:text-ninja-text",
-            autoTradeEnabled && "opacity-50 cursor-not-allowed"
-          )}
-        >
-          ⚡ Live
-        </button>
       </div>
 
       {/* Watched ticker — the single asset the bot scans/trades */}
@@ -414,30 +385,11 @@ export function AutoTrader() {
         </div>
       )}
 
-      {/* Balance (paper) or live note */}
-      {!isLive && (
-        <div className="flex justify-between text-xs">
-          <span className="text-ninja-muted">Paper Balance</span>
-          <span className="font-mono font-bold text-ninja-green">${paperBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-        </div>
-      )}
-
-      {isLive && !autoTradeEnabled && (
+      {!autoTradeEnabled && (
         <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/5 p-2.5 text-xs text-yellow-300 leading-relaxed">
-          <strong>Live mode:</strong> Bot will sign real orders via your wallet.
-          Each trade uses 5% of your Hyperliquid equity.
-          SL at −23% margin, TP dynamic (25–100%).
+          <strong>Live:</strong> the bot signs real orders via your API key on {botAsset}.
+          Risk-sized margin, hard SL at −23%, dynamic TP (25–100%), trailing stop to lock profit.
         </div>
-      )}
-
-      {/* How it works blurb (only when off, paper mode) */}
-      {!autoTradeEnabled && !isLive && (
-        <p className="text-ninja-muted/70 text-xs leading-relaxed">
-          AI scans {botAsset} every minute using TheStrat + Goldbach.
-          Enters on a fully-bodied 5m/15m break of prior structure.
-          Hard SL at −23% margin. TP is dynamic (25–100%) based on momentum.
-          Trailing stop locks profit once you're ahead.
-        </p>
       )}
 
       {/* Log */}

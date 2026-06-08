@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useStore } from "@/store/useStore";
 import { ASSETS } from "@/types";
 import { cn } from "@/lib/utils";
 import { Filter, RefreshCw } from "lucide-react";
@@ -21,7 +20,6 @@ const fmtTime = (ms: number) => {
 };
 
 export function TradesContent() {
-  const { closedTrades, paperEnabled } = useStore();
   const [live, setLive] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<"all" | "long" | "short" | "win" | "loss">("all");
@@ -35,17 +33,7 @@ export function TradesContent() {
   };
   useEffect(() => { loadLive(); const id = setInterval(loadLive, 30000); return () => clearInterval(id); }, []);
 
-  // Paper trades from the store (only when paper is enabled)
-  const paperRows: Row[] = paperEnabled
-    ? closedTrades.filter((t) => t.mode === "paper").map((t) => ({
-        id: t.id, asset: t.asset, direction: t.direction as "long" | "short",
-        entryPrice: t.entryPrice, exitPrice: t.exitPrice, leverage: t.leverage, size: t.size,
-        pnl: t.pnl ?? 0, pnlPercent: t.pnlPercent, closeReason: t.closeReason, mode: "paper",
-        time: t.closedAt ? new Date(t.closedAt).getTime() : new Date(t.openedAt).getTime(),
-      }))
-    : [];
-
-  const all = [...live, ...paperRows].sort((a, b) => b.time - a.time);
+  const all = [...live].sort((a, b) => b.time - a.time);
   const filtered = all.filter((t) => {
     if (filter === "long") return t.direction === "long";
     if (filter === "short") return t.direction === "short";
@@ -63,7 +51,7 @@ export function TradesContent() {
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-xl font-bold text-ninja-text">Trade History</h1>
         <div className="flex items-center gap-2">
-          <span className="text-xs px-2 py-1 rounded-full font-bold bg-green-500/20 text-green-400">LIVE{paperEnabled ? " + PAPER" : ""}</span>
+          <span className="text-xs px-2 py-1 rounded-full font-bold bg-green-500/20 text-green-400">LIVE</span>
           <button onClick={loadLive} title="Refresh" className="p-1.5 rounded-md text-ninja-muted hover:text-ninja-text hover:bg-ninja-border/40">
             <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
           </button>
@@ -146,7 +134,7 @@ export function TradesContent() {
           </div>
         )}
       </div>
-      <p className="text-ninja-muted/50 text-[11px]">Live history from your Hyperliquid fills (closing trades). {paperEnabled ? "Paper trades from this session included." : "Enable paper in Settings to also show simulated trades."}</p>
+      <p className="text-ninja-muted/50 text-[11px]">Live history from your Hyperliquid fills (closing trades).</p>
     </div>
   );
 }
