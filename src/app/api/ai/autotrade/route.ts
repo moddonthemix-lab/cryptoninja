@@ -5,6 +5,32 @@ import { ASSETS } from "@/types";
 
 const HL_INFO = "https://api.hyperliquid.xyz/info";
 
+// Asset context (mark, funding, open interest) for flow factors. Cached briefly;
+// lastCtx keeps the prior reading so we can infer OI bias (rising/falling OI).
+const ctxCache = new Map<string, { ts: number; v: { mark: number; funding: number; oi: number } | null }>();
+const lastCtx = new Map<string, { oi: number; px: number }>();
+async function fetchCtx(coin: string, dex: "" | "xyz"): Promise<{ mark: number; funding: number; oi: number } | null> {
+  const key = `${dex}:${coin}`;
+  const hit = ctxCache.get(key);
+  if (hit && Date.now() - hit.ts < 30_000) return hit.v;
+  try {
+    const res = await fetch(HL_INFO, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "metaAndAssetCtxs", ...(dex ? { dex } : {}) }),
+    });
+    if (!res.ok) throw new Error(String(res.status));
+    const [meta, ctxs] = await res.json();
+    const idx = meta.universe.findIndex((u: any) => u.name === coin);
+    if (idx < 0) { ctxCache.set(key, { ts: Date.now(), v: null }); return null; }
+    const c = ctxs[idx];
+    const v = { mark: parseFloat(c.markPx) || 0, funding: parseFloat(c.funding) || 0, oi: parseFloat(c.openInterest) || 0 };
+    ctxCache.set(key, { ts: Date.now(), v });
+    return v;
+  } catch {
+    return hit?.v ?? null;
+  }
+}
+
 const INTERVAL_MS: Record<string, number> = {
   "5m": 300_000,
   "15m": 900_000,
@@ -426,6 +452,32 @@ export async function POST(req: NextRequest) {
     const amdPhase = getAMDPhase(new Date().getUTCHours());
     const inManipulation = amdPhase === "manipulation";
 
+    // ── Order / position FLOW factors ─────────────────────────────────────
+    // 1) Candle volume delta (taker proxy) from recent 5m candles — no fetch.
+    let buyVol = 0, sellVol = 0;
+    for (const c of candles5m.slice(-12)) { if (c.close >= c.open) buyVol += c.volume; else sellVol += c.volume; }
+    const volFlowDir: "bullish" | "bearish" | "neutral" =
+      buyVol > sellVol * 1.08 ? "bullish" : sellVol > buyVol * 1.08 ? "bearish" : "neutral";
+    // 2) Open-interest bias + funding from asset ctx (main-dex; OI delta vs price).
+    const ctx = await fetchCtx(coin, dex);
+    let oiBiasDir: "bullish" | "bearish" | "neutral" = "neutral";
+    let fundingDir: "bullish" | "bearish" | "neutral" = "neutral";
+    if (ctx) {
+      const prev = lastCtx.get(coin);
+      if (prev && prev.oi > 0) {
+        const dOi = ctx.oi - prev.oi, dPx = ctx.mark - prev.px;
+        if (Math.abs(dOi / prev.oi) > 0.001) {
+          // rising OI = fresh positions in the move's direction; falling OI in a
+          // rally = short-covering (bullish), in a drop = long-exit (bearish)
+          if (dPx > 0) oiBiasDir = "bullish"; else if (dPx < 0) oiBiasDir = "bearish";
+        }
+      }
+      lastCtx.set(coin, { oi: ctx.oi, px: ctx.mark });
+      fundingDir = ctx.funding > 0.000005 ? "bullish" : ctx.funding < -0.000005 ? "bearish" : "neutral";
+    }
+    const flowAgree = (d: "bullish" | "bearish" | "neutral") => d !== "neutral" && d === tradeDir;
+    const flowConflict = (d: "bullish" | "bearish" | "neutral") => d !== "neutral" && d !== tradeDir;
+
     // ── Confidence score breakdown (rule-based factors, shown in the bot panel) ──
     const buildBreakdown = () => {
       const b: Array<{ label: string; points: number; active: boolean }> = [
@@ -444,6 +496,9 @@ export async function POST(req: NextRequest) {
       b.push({ label: "Stop run in trade direction", points: 10, active: stopRun.detected && stopRun.direction === tradeDir });
       b.push({ label: "15m confirmation", points: 5, active: confirmedVia15m });
       b.push({ label: "London session", points: 5, active: inManipulation });
+      b.push({ label: `Taker flow ${volFlowDir}`, points: flowAgree(volFlowDir) ? 6 : flowConflict(volFlowDir) ? -6 : 0, active: volFlowDir !== "neutral" });
+      b.push({ label: `OI bias ${oiBiasDir}`, points: flowAgree(oiBiasDir) ? 6 : flowConflict(oiBiasDir) ? -4 : 0, active: oiBiasDir !== "neutral" });
+      b.push({ label: `Funding ${fundingDir}`, points: flowAgree(fundingDir) ? 3 : flowConflict(fundingDir) ? -3 : 0, active: fundingDir !== "neutral" });
       const tfPts = whichBreak === "daily" ? 12 : whichBreak === "4H" ? 8 : -6;
       b.push({ label: `${whichBreak.toUpperCase()} break (timeframe priority)`, points: tfPts, active: true });
       return b;
@@ -536,6 +591,11 @@ ${gbLevelsList}
 Session phase    : ${amdPhase.toUpperCase()}${inManipulation ? " ✓ ideal entry window" : ""}
 Stop run (5m)    : ${stopRun.detected ? `YES — ${stopRun.direction} (swept $${stopRun.sweptLevel?.toFixed(2)})` : "NO"}
 
+=== ORDER / POSITION FLOW (should agree with the ${tradeDir} break) ===
+Taker volume (5m): ${volFlowDir.toUpperCase()} (buy ${buyVol.toFixed(0)} vs sell ${sellVol.toFixed(0)})
+OI bias          : ${oiBiasDir.toUpperCase()}${ctx ? ` (OI ${ctx.oi.toFixed(0)})` : ""}
+Funding          : ${fundingDir.toUpperCase()}${ctx ? ` (${(ctx.funding * 100).toFixed(4)}%/h)` : ""}
+
 === LAST 5×5-MIN ===
 ${last5min}
 
@@ -558,6 +618,10 @@ Confidence drivers: FTFC agrees with break (+20) / conflicts (-15); intraday + G
     if (stopRun.detected && stopRun.direction === tradeDir) confidence += 10;
     if (confirmedVia15m) confidence += 5;
     if (inManipulation) confidence += 5;
+    // Flow: taker volume delta, OI bias, funding — agree with the break = boost
+    if (flowAgree(volFlowDir)) confidence += 6; else if (flowConflict(volFlowDir)) confidence -= 6;
+    if (flowAgree(oiBiasDir)) confidence += 6; else if (flowConflict(oiBiasDir)) confidence -= 4;
+    if (flowAgree(fundingDir)) confidence += 3; else if (flowConflict(fundingDir)) confidence -= 3;
     // Timeframe priority: favor daily/4H setups; 1H is a lower-priority fallback
     // (needs extra confluence to clear the confidence gate).
     const tfBoost = whichBreak === "daily" ? 12 : whichBreak === "4H" ? 8 : -6;
