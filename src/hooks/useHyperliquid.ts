@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { useAccount } from "wagmi";
 import { useStore } from "@/store/useStore";
 import {
@@ -32,72 +32,86 @@ interface AssetMeta {
   hlCoin: string;
 }
 
+// ── Shared singleton account poller ──────────────────────────────────────────
+// useHyperliquid() is mounted in many components; without sharing, each one polls
+// independently. This runs ONE poll (every 20s) and fans the result out to all
+// consumers, cutting client→server requests ~6×.
+interface HLData {
+  account: HLAccountSummary | null;
+  livePositions: HLLivePosition[];
+  assetMeta: Record<string, AssetMeta>;
+  spotUsdcBalance: number;
+  withdrawable: number;
+  triggers: Record<string, { tp?: number; sl?: number }>;
+  openOrders: any[];
+}
+let hlData: HLData = { account: null, livePositions: [], assetMeta: {}, spotUsdcBalance: 0, withdrawable: 0, triggers: {}, openOrders: [] };
+const hlListeners = new Set<() => void>();
+let hlTimer: ReturnType<typeof setInterval> | null = null;
+let hlRefs = 0;
+let hlAddr: string | undefined;
+let hlInFlight = false;
+
+async function hlPoll() {
+  if (hlInFlight) return;
+  hlInFlight = true;
+  try {
+    const accountUrl = hlAddr ? `/api/hl/account?address=${hlAddr}` : "/api/hl/account";
+    const [accRes, metaRes] = await Promise.all([fetch(accountUrl), fetch("/api/hl/meta")]);
+    const accData = await accRes.json();
+    const meta = await metaRes.json();
+    const next: HLData = { ...hlData };
+    if (accData.state?.crossMarginSummary) {
+      next.account = accData.state.crossMarginSummary;
+      next.withdrawable = parseFloat(accData.state.withdrawable ?? "0") || 0;
+      next.livePositions = (accData.state.assetPositions as Array<{ position: HLLivePosition }>)
+        .map((p) => p.position).filter((p) => parseFloat(p.szi) !== 0);
+    }
+    if (typeof accData.spotUsdcBalance === "number") next.spotUsdcBalance = accData.spotUsdcBalance;
+    const orders: any[] = Array.isArray(accData.orders) ? accData.orders : [];
+    next.openOrders = orders;
+    const byCoin: Record<string, { tp?: number; sl?: number }> = {};
+    for (const o of orders) {
+      const px = parseFloat(o.triggerPx ?? o.triggerPrice ?? "0");
+      if (!px) continue;
+      const isTp = (o.orderType && /take profit/i.test(o.orderType)) || o.tpsl === "tp";
+      const isSl = (o.orderType && /stop/i.test(o.orderType)) || o.tpsl === "sl";
+      if (!byCoin[o.coin]) byCoin[o.coin] = {};
+      if (isTp) byCoin[o.coin].tp = px;
+      else if (isSl) byCoin[o.coin].sl = px;
+    }
+    next.triggers = byCoin;
+    if (!meta.error) next.assetMeta = meta;
+    hlData = next;
+    hlListeners.forEach((l) => l());
+  } catch (e: any) {
+    console.error("HL account fetch:", e?.message);
+  } finally {
+    hlInFlight = false;
+  }
+}
+function hlSubscribe(cb: () => void) {
+  hlListeners.add(cb); hlRefs++;
+  if (hlRefs === 1) { hlPoll(); hlTimer = setInterval(hlPoll, 20_000); }
+  return () => {
+    hlListeners.delete(cb); hlRefs = Math.max(0, hlRefs - 1);
+    if (hlRefs === 0 && hlTimer) { clearInterval(hlTimer); hlTimer = null; }
+  };
+}
+const hlGetSnapshot = () => hlData;
+
 export function useHyperliquid() {
   const { address } = useAccount();
   const { tradingMode } = useStore();
-  const [account, setAccount] = useState<HLAccountSummary | null>(null);
-  const [livePositions, setLivePositions] = useState<HLLivePosition[]>([]);
-  const [assetMeta, setAssetMeta] = useState<Record<string, AssetMeta>>({});
-  const [spotUsdcBalance, setSpotUsdcBalance] = useState<number>(0);
-  const [withdrawable, setWithdrawable] = useState<number>(0);
-  // Per-coin TP/SL trigger prices parsed from open trigger orders
-  const [triggers, setTriggers] = useState<Record<string, { tp?: number; sl?: number }>>({});
-  // Full list of resting open orders (limit + trigger)
-  const [openOrders, setOpenOrders] = useState<any[]>([]);
+  const data = useSyncExternalStore(hlSubscribe, hlGetSnapshot, hlGetSnapshot);
+  const { account, livePositions, assetMeta, spotUsdcBalance, withdrawable, triggers, openOrders } = data;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const refreshAccount = useCallback(async () => {
-    try {
-      const accountUrl = address ? `/api/hl/account?address=${address}` : "/api/hl/account";
-      const [accRes, metaRes] = await Promise.all([
-        fetch(accountUrl),
-        fetch("/api/hl/meta"),
-      ]);
-      const accData = await accRes.json();
-      const meta = await metaRes.json();
+  // Keep the shared poller pointed at the current address
+  useEffect(() => { hlAddr = address; }, [address]);
 
-      if (accData.state?.crossMarginSummary) {
-        setAccount(accData.state.crossMarginSummary);
-        // withdrawable is top-level in the HL response, not inside crossMarginSummary
-        setWithdrawable(parseFloat(accData.state.withdrawable ?? "0") || 0);
-        setLivePositions(
-          (accData.state.assetPositions as Array<{ position: HLLivePosition }>)
-            .map((p) => p.position)
-            .filter((p) => parseFloat(p.szi) !== 0)
-        );
-      }
-      if (typeof accData.spotUsdcBalance === "number") {
-        setSpotUsdcBalance(accData.spotUsdcBalance);
-      }
-
-      // Parse TP/SL trigger orders (frontendOpenOrders) by coin
-      const orders: any[] = Array.isArray(accData.orders) ? accData.orders : [];
-      setOpenOrders(orders);
-      const byCoin: Record<string, { tp?: number; sl?: number }> = {};
-      for (const o of orders) {
-        const px = parseFloat(o.triggerPx ?? o.triggerPrice ?? "0");
-        if (!px) continue;
-        const isTp = (o.orderType && /take profit/i.test(o.orderType)) || o.tpsl === "tp";
-        const isSl = (o.orderType && /stop/i.test(o.orderType)) || o.tpsl === "sl";
-        if (!byCoin[o.coin]) byCoin[o.coin] = {};
-        if (isTp) byCoin[o.coin].tp = px;
-        else if (isSl) byCoin[o.coin].sl = px;
-      }
-      setTriggers(byCoin);
-
-      if (!meta.error) setAssetMeta(meta);
-    } catch (e: any) {
-      console.error("HL account fetch:", e.message);
-    }
-  }, [address]);
-
-  // Fetch on mount and every 15s — works with or without wallet connected
-  useEffect(() => {
-    refreshAccount();
-    const interval = setInterval(refreshAccount, 20_000);
-    return () => clearInterval(interval);
-  }, [refreshAccount]);
+  const refreshAccount = useCallback(async () => { hlAddr = address; await hlPoll(); }, [address]);
 
   // Submit any HL action — server signs with the API wallet key (no wallet popup needed)
   const submitAction = useCallback(async (action: object): Promise<any> => {
