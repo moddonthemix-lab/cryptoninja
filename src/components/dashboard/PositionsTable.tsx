@@ -8,7 +8,11 @@ import { notify } from "@/lib/notify";
 import { ASSETS } from "@/types";
 import type { Asset } from "@/types";
 import { X, Share2 } from "lucide-react";
-import { ShareCard, type SharePosition } from "./ShareCard";
+import dynamic from "next/dynamic";
+import type { SharePosition } from "./ShareCard";
+
+// Lazy-load the PnL card (pulls in html-to-image) only when actually sharing.
+const ShareCard = dynamic(() => import("./ShareCard").then((m) => m.ShareCard), { ssr: false });
 
 type Tab = "Positions" | "Orders" | "History";
 

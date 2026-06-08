@@ -2,7 +2,13 @@
 
 import { useStore } from "@/store/useStore";
 import { useHyperliquid } from "@/hooks/useHyperliquid";
-import { LightweightChart } from "@/components/chart/LightweightChart";
+import dynamic from "next/dynamic";
+
+// Lazy-load the chart (lightweight-charts) so it's not in the initial bundle.
+const LightweightChart = dynamic(
+  () => import("@/components/chart/LightweightChart").then((m) => m.LightweightChart),
+  { ssr: false, loading: () => <div className="bg-ninja-card border border-ninja-border rounded-xl h-[520px] flex items-center justify-center text-ninja-muted text-xs">Loading chart…</div> }
+);
 import { StatsGrid } from "./StatsGrid";
 import { PositionsTable } from "./PositionsTable";
 import { OrderFlow } from "./OrderFlow";
