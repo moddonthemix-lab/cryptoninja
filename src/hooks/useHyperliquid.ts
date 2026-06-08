@@ -90,12 +90,22 @@ async function hlPoll() {
     hlInFlight = false;
   }
 }
+// Skip the poll while the tab is backgrounded (cosmetic data); refresh on return.
+function hlTick() { if (typeof document !== "undefined" && document.hidden) return; hlPoll(); }
+function hlOnVisible() { if (typeof document !== "undefined" && !document.hidden) hlPoll(); }
 function hlSubscribe(cb: () => void) {
   hlListeners.add(cb); hlRefs++;
-  if (hlRefs === 1) { hlPoll(); hlTimer = setInterval(hlPoll, 20_000); }
+  if (hlRefs === 1) {
+    hlPoll();
+    hlTimer = setInterval(hlTick, 20_000);
+    if (typeof document !== "undefined") document.addEventListener("visibilitychange", hlOnVisible);
+  }
   return () => {
     hlListeners.delete(cb); hlRefs = Math.max(0, hlRefs - 1);
-    if (hlRefs === 0 && hlTimer) { clearInterval(hlTimer); hlTimer = null; }
+    if (hlRefs === 0 && hlTimer) {
+      clearInterval(hlTimer); hlTimer = null;
+      if (typeof document !== "undefined") document.removeEventListener("visibilitychange", hlOnVisible);
+    }
   };
 }
 const hlGetSnapshot = () => hlData;

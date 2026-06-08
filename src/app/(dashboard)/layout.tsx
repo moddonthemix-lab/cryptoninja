@@ -14,7 +14,7 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { emergencyStop } = useStore();
+  const emergencyStop = useStore((s) => s.emergencyStop);
 
   return (
     <AutoTraderProvider>

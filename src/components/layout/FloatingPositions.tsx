@@ -15,9 +15,11 @@ interface Row {
 }
 
 export function FloatingPositions() {
-  const { openPositions, marketData, tradingMode, closePosition } = useStore();
+  const openPositions = useStore((s) => s.openPositions);
+  const marketData = useStore((s) => s.marketData);
+  const closePosition = useStore((s) => s.closePosition);
   const hl = useHyperliquid();
-  const isLive = tradingMode === "live";
+  const isLive = true; // live-only platform
 
   const [expanded, setExpanded] = useState(true);
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);

@@ -9,7 +9,9 @@ import { NotificationsBell } from "./NotificationsBell";
 import { MobileNav } from "./MobileNav";
 
 export function TopBar() {
-  const { marketData, selectedAsset, setSelectedAsset } = useStore();
+  const marketData = useStore((s) => s.marketData);
+  const selectedAsset = useStore((s) => s.selectedAsset);
+  const setSelectedAsset = useStore((s) => s.setSelectedAsset);
   const { totalBalance } = useHyperliquid();
   const equity = totalBalance > 0 ? totalBalance : null;
 
