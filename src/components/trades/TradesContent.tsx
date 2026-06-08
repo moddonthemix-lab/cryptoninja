@@ -101,6 +101,7 @@ export function TradesContent() {
                 <tr className="text-ninja-muted">
                   <th className="text-left px-4 py-3">Asset</th>
                   <th className="text-left px-4 py-3">Side</th>
+                  <th className="text-right px-4 py-3">Entry</th>
                   <th className="text-right px-4 py-3">Exit</th>
                   <th className="text-right px-4 py-3">Size</th>
                   <th className="text-right px-4 py-3">PnL</th>
@@ -117,8 +118,9 @@ export function TradesContent() {
                         {t.direction === "long" ? "↑" : "↓"} {t.direction.toUpperCase()}
                       </span>
                     </td>
+                    <td className="px-4 py-3 text-right font-mono text-ninja-muted">{t.entryPrice ? `$${t.entryPrice.toLocaleString(undefined, { maximumFractionDigits: t.entryPrice < 1 ? 5 : 2 })}` : "—"}</td>
                     <td className="px-4 py-3 text-right font-mono">{t.exitPrice ? `$${t.exitPrice.toLocaleString(undefined, { maximumFractionDigits: t.exitPrice < 1 ? 5 : 2 })}` : "—"}</td>
-                    <td className="px-4 py-3 text-right font-mono text-ninja-muted">{t.size}</td>
+                    <td className="px-4 py-3 text-right font-mono text-ninja-muted">{t.size.toFixed(4)}</td>
                     <td className="px-4 py-3 text-right font-mono">
                       <span className={t.pnl >= 0 ? "text-ninja-green" : "text-ninja-red"}>{t.pnl >= 0 ? "+" : "-"}${Math.abs(t.pnl).toFixed(2)}</span>
                       {t.pnlPercent != null && <span className={cn("ml-1.5 text-[10px]", t.pnl >= 0 ? "text-ninja-green/70" : "text-ninja-red/70")}>({t.pnlPercent >= 0 ? "+" : ""}{t.pnlPercent.toFixed(1)}%)</span>}
