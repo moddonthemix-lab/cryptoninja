@@ -146,10 +146,11 @@ function confirmBreak(
   const last15 = candles15m[candles15m.length - 1];
   const held5 = direction === "bullish" ? last5.close > level : last5.close < level;
   const held15 = last15 ? (direction === "bullish" ? last15.close > level : last15.close < level) : false;
-  // "Holding" = the latest 5m OR 15m close is still beyond the level. Using the
-  // 15m too means a single 5m wick back through the level doesn't void a break
-  // that is clearly holding on the higher resolution candle.
-  if (!held5 && !held15) return { confirmed: false, needs15m: false, via: "" };
+  // "Holding" requires the LATEST 5m close to still be beyond the level. If price
+  // has reclaimed the level (closed back through it), the break is no longer valid
+  // — so direction follows the CURRENT Strat state, not a stale break that already
+  // reversed. (15m is used below only to grade confirmation strength.)
+  if (!held5) return { confirmed: false, needs15m: false, via: "" };
 
   const bodied5 = candles5m.slice(-6).filter((c) => bodyBeyond(c, level, direction)).length;
   const bodied15 = held15 && candles15m.slice(-3).some((c) => bodyBeyond(c, level, direction));
