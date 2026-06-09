@@ -66,8 +66,8 @@ export function AutoTrader() {
   }, []);
 
   // Leverage risk color (text class + hex for the slider fill)
-  const levColor = autoTradeLeverage > 10 ? "text-red-400" : autoTradeLeverage > 5 ? "text-yellow-400" : "text-ninja-green";
-  const levHex = autoTradeLeverage > 10 ? "#ef4444" : autoTradeLeverage > 5 ? "#f59e0b" : "#10b981";
+  const levColor = autoTradeLeverage > 20 ? "text-red-400" : autoTradeLeverage > 10 ? "text-yellow-400" : "text-ninja-green";
+  const levHex = autoTradeLeverage > 20 ? "#ef4444" : autoTradeLeverage > 10 ? "#f59e0b" : "#10b981";
 
   return (
     <div className={cn(
@@ -295,21 +295,21 @@ export function AutoTrader() {
         </div>
 
         <input
-          type="range" min={1} max={20} step={1}
+          type="range" min={1} max={40} step={1}
           value={autoTradeLeverage}
           onChange={(e) => setAutoTradeLeverage(Number(e.target.value))}
           disabled={autoTradeEnabled}
           className="ninja-range"
           style={{
             // @ts-expect-error custom props
-            "--pct": `${((autoTradeLeverage - 1) / 19) * 100}%`,
+            "--pct": `${((autoTradeLeverage - 1) / 39) * 100}%`,
             "--fill": levHex,
           }}
         />
 
         {/* Quick presets */}
         <div className="flex gap-1">
-          {[2, 5, 10, 20].map((lev) => (
+          {[5, 10, 20, 40].map((lev) => (
             <button
               key={lev}
               onClick={() => setAutoTradeLeverage(lev)}
