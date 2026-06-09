@@ -187,7 +187,37 @@ function WalletCard({ address, label, onRemove, tradable }: { address: string; l
       ) : !data || data.positions.length === 0 ? (
         <div className="text-xs text-ninja-muted/60 py-1">{loading ? "Loading…" : "No open positions"}</div>
       ) : (
-        <div className="overflow-x-auto">
+        <>
+        {/* Mobile cards */}
+        <div className="sm:hidden space-y-1.5">
+          {data.positions.map((p) => {
+            const s = sym(p.coin);
+            const isLong = p.direction === "long";
+            return (
+              <div key={p.coin} className={cn("rounded-lg border border-ninja-border/60 p-2 flex items-center justify-between gap-2", isLong ? "border-l-2 border-l-green-500/60" : "border-l-2 border-l-red-500/60")}>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5 text-xs">
+                    <span className="font-bold font-mono" style={{ color: ASSETS[s]?.color }}>{s}</span>
+                    <span className={cn("px-1.5 py-0.5 rounded font-bold text-[10px]", isLong ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400")}>{isLong ? "L" : "S"} {p.leverage}x</span>
+                    {!tradable.has(s) && <span className="text-yellow-400/60 text-[10px]">(n/a)</span>}
+                  </div>
+                  <div className="text-[10px] font-mono text-ninja-muted/70 mt-0.5">${p.entryPx.toFixed(p.entryPx < 1 ? 5 : 2)} · ${p.positionValue.toFixed(0)} · {fmtAge(p.openedAt)}</div>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <span className={cn("font-mono font-bold text-xs", p.unrealizedPnl >= 0 ? "text-ninja-green" : "text-ninja-red")}>{p.unrealizedPnl >= 0 ? "+" : ""}${p.unrealizedPnl.toFixed(2)}</span>
+                  {tradable.has(s) && (
+                    <button onClick={() => toggleCopyPos(s)}
+                      className={cn("px-2 py-1 rounded border text-[11px] font-bold", isPosCopied(s) ? "border-ninja-accent/50 text-ninja-accent bg-ninja-accent/10" : "border-ninja-border text-ninja-muted")}>
+                      {isPosCopied(s) ? "✓" : <CopyIcon size={10} />}
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        {/* Desktop table */}
+        <div className="hidden sm:block overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
               <tr className="text-ninja-muted border-b border-ninja-border/60 uppercase tracking-wide">
@@ -242,6 +272,7 @@ function WalletCard({ address, label, onRemove, tradable }: { address: string; l
             </tbody>
           </table>
         </div>
+        </>
       )}
     </div>
   );

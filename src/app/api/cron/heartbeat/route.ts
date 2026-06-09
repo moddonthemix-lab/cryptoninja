@@ -18,6 +18,7 @@ export async function POST(req: Request) {
         botState.copyOpen = {};
         for (const c of b.copyOpenCoins) if (c) botState.copyOpen[c] = true;
       }
+      if (b.featureStats && typeof b.featureStats === "object") botState.featureStats = b.featureStats;
     }
   } catch { /* heartbeat without body is fine */ }
   return NextResponse.json({ ok: true });

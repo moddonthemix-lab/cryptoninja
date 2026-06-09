@@ -16,7 +16,22 @@ export const botState = {
   // target 24/7 when you're away.
   copyConfig: null as any,
   copyOpen: {} as Record<string, true>, // coins we hold as copies (for close-follow)
+  // Per-setup learning, unified across browser + server
+  featureStats: {} as Record<string, { w: number; l: number }>,        // synced from browser
+  serverFeatureStats: {} as Record<string, { w: number; l: number }>,  // recorded by the cron
+  pendingFeatures: {} as Record<string, string[]>,                     // coin -> features at entry
 };
+
+// Merge browser-synced + server-recorded feature win/loss counts.
+export function mergedFeatureStats(): Record<string, { w: number; l: number }> {
+  const out: Record<string, { w: number; l: number }> = {};
+  for (const src of [botState.featureStats, botState.serverFeatureStats]) {
+    for (const [k, v] of Object.entries(src || {})) {
+      (out[k] ||= { w: 0, l: 0 }); out[k].w += v.w || 0; out[k].l += v.l || 0;
+    }
+  }
+  return out;
+}
 
 export function serverTradesToday(): number {
   const today = new Date().toISOString().slice(0, 10); // UTC day on the server

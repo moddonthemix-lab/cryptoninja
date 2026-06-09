@@ -8,7 +8,7 @@ import {
 } from "@/lib/hyperliquid";
 import { submitWithAgent, isAgentConfigured } from "@/lib/hl-agent";
 import { lockTarget } from "@/lib/trailing";
-import { botState, recordServerTrade, serverTradesToday } from "@/lib/botState";
+import { botState, recordServerTrade, serverTradesToday, mergedFeatureStats } from "@/lib/botState";
 
 // If an open browser pinged within this window, the in-browser bot is handling
 // things — the cron stands down so the two never trade at once.
@@ -102,6 +102,13 @@ async function handle(req: NextRequest) {
             const cp = parseFloat(f.closedPnl ?? "0") || 0;
             if (cp !== 0) pnl += cp - (parseFloat(f.fee ?? "0") || 0);
           }
+          // Credit this trade's features into the server's learning stats
+          const feats = botState.pendingFeatures[coin];
+          if (feats) {
+            const win = pnl > 0;
+            for (const f of feats) { (botState.serverFeatureStats[f] ||= { w: 0, l: 0 }); if (win) botState.serverFeatureStats[f].w++; else botState.serverFeatureStats[f].l++; }
+            delete botState.pendingFeatures[coin];
+          }
           log.push(`Exit ${sym} PnL ${pnl.toFixed(2)}`);
           await tg(origin, `${pnl >= 0 ? "🟢" : "🔴"} <b>${pnl >= 0 ? "TP / EXIT" : "SL / EXIT"} ${sym}</b>\nClosed · PnL <b>${pnl >= 0 ? "+" : "-"}$${Math.abs(pnl).toFixed(2)}</b>`);
         }
@@ -151,7 +158,7 @@ async function handle(req: NextRequest) {
 
         const aRes = await fetch(`${origin}/api/ai/autotrade`, {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ asset, leverage, minConfidence: minConf }),
+          body: JSON.stringify({ asset, leverage, minConfidence: minConf, featureStats: mergedFeatureStats() }),
         });
         const data = await aRes.json();
         if (!data.shouldTrade || (data.confidence ?? 0) < minConf) continue;
@@ -172,6 +179,7 @@ async function handle(req: NextRequest) {
         await submitWithAgent(buildPositionTpSlAction(info.assetId, isBuy, size, tp, sl, info.szDecimals), master).catch(() => {});
         recordServerTrade();
         botState.trail[info.hlCoin] = { peakPnl: 0, locked: 0 };
+        if (Array.isArray(data.features)) botState.pendingFeatures[info.hlCoin] = data.features; // for learning credit on close
         traded++;
         log.push(`ENTER ${direction} ${asset} @ ${entry} conf ${confidence}%`);
         await tg(origin,

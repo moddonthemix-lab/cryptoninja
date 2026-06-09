@@ -27,9 +27,16 @@ export function AutoTraderProvider({ children }: { children: React.ReactNode }) 
       const copyOpenCoins = st.openPositions
         .filter((p) => p.isOpen && p.id.startsWith("copy_"))
         .map((p) => ASSETS[p.asset]?.hlCoin || p.asset);
+      // Per-setup win/loss from our closed trades, so the server cron shares the learning
+      const featureStats: Record<string, { w: number; l: number }> = {};
+      for (const t of st.closedTrades) {
+        if (!t.features || t.pnl == null) continue;
+        const win = (t.pnl ?? 0) > 0;
+        for (const f of t.features) { (featureStats[f] ||= { w: 0, l: 0 }); if (win) featureStats[f].w++; else featureStats[f].l++; }
+      }
       fetch("/api/cron/heartbeat", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ copyConfig: st.copyTrade, copyOpenCoins }),
+        body: JSON.stringify({ copyConfig: st.copyTrade, copyOpenCoins, featureStats }),
       }).catch(() => {});
     };
     ping();

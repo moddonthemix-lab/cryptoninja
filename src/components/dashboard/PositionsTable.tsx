@@ -408,7 +408,34 @@ export function PositionsTable() {
               {isLive ? "No open orders" : "Open orders show in Live mode"}
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <>
+            {/* Mobile cards */}
+            <div className="sm:hidden p-2 space-y-2">
+              {restingOrders.map((o) => {
+                const ticker = String(o.coin).replace(/^xyz:/, "");
+                const isBuy = o.side === "B";
+                const isTrigger = o.isTrigger;
+                const orderType = o.orderType || (isTrigger ? "Trigger" : "Limit");
+                const px = isTrigger ? parseFloat(o.triggerPx) : parseFloat(o.limitPx);
+                const typeColor = /take profit/i.test(orderType) ? "text-ninja-green" : /stop/i.test(orderType) ? "text-ninja-red" : "text-ninja-accent";
+                const isCancelling = cancelling === o.oid;
+                return (
+                  <div key={o.oid} className={cn("rounded-lg border p-2.5 flex items-center justify-between gap-2", isCancelling && "opacity-40", isBuy ? "border-l-2 border-l-green-500/70 border-ninja-border" : "border-l-2 border-l-red-500/70 border-ninja-border")}>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold font-mono" style={{ color: ASSETS[ticker]?.color }}>{ticker}</span>
+                        <span className={cn("text-[10px] px-1.5 py-0.5 rounded font-bold", isBuy ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400")}>{isBuy ? "BUY" : "SELL"}</span>
+                      </div>
+                      <div className="text-[11px] font-mono mt-0.5"><span className={typeColor}>{orderType}{o.reduceOnly ? " · RO" : ""}</span> <span className="text-ninja-muted">· {parseFloat(o.sz)} @ ${px.toLocaleString(undefined, { maximumFractionDigits: px < 1 ? 5 : 2 })}</span></div>
+                    </div>
+                    <button onClick={() => handleCancel(o.coin, o.oid)} disabled={isCancelling}
+                      className="px-2 py-1.5 rounded border border-ninja-border text-ninja-muted hover:border-red-500/60 hover:text-red-400 hover:bg-red-500/10 text-xs font-bold flex items-center gap-1"><X size={11} /> Cancel</button>
+                  </div>
+                );
+              })}
+            </div>
+            {/* Desktop table */}
+            <div className="hidden sm:block overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="text-ninja-muted border-b border-ninja-border/60 uppercase tracking-wide">
@@ -474,6 +501,7 @@ export function PositionsTable() {
                 </tbody>
               </table>
             </div>
+            </>
           )}
         </>
       )}
