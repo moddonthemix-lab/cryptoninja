@@ -50,7 +50,7 @@ export interface AutoTraderStatus {
 
 const MAX_TRADES_PER_DAY = 5;
 const TRADE_COOLDOWN_MS = 30 * 60 * 1000; // 30 min between auto trades
-const MIN_CONFIDENCE = 60;                 // only take 60%+ confidence setups
+const MIN_CONFIDENCE = 65;                 // only take 65%+ confidence setups
 
 export function useAutoTrader(asset: Asset) {
   const {
@@ -314,20 +314,31 @@ export function useAutoTrader(asset: Asset) {
 
     try {
       // Feed recent trade outcomes back to the AI when learning is enabled
-      const recentTrades = useStore.getState().learningEnabled
+      const learnOn = useStore.getState().learningEnabled;
+      const recentTrades = learnOn
         ? store.closedTrades.slice(0, 8).map((t) => ({
             asset: t.asset, direction: t.direction,
             confidence: t.confidence, pnlPct: t.pnlPercent, note: t.note,
           }))
         : [];
+      // Per-setup win rates from our own closed trades, for the learning nudge
+      const featureStats: Record<string, { w: number; l: number }> = {};
+      if (learnOn) {
+        for (const t of store.closedTrades) {
+          if (!t.features || t.pnl == null) continue;
+          const win = (t.pnl ?? 0) > 0;
+          for (const f of t.features) { (featureStats[f] ||= { w: 0, l: 0 }); if (win) featureStats[f].w++; else featureStats[f].l++; }
+        }
+      }
       const res = await fetch("/api/ai/autotrade", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           asset, leverage: autoTradeLeverage,
           minConfidence: MIN_CONFIDENCE,
-          learn: !preview && useStore.getState().learningEnabled,
+          learn: !preview && learnOn,
           recentTrades: preview ? [] : recentTrades,
+          featureStats: preview ? {} : featureStats,
           // AI only when the toggle is on AND we're actually trading (not preview)
           useAI: !preview && useStore.getState().botUseAI,
           preview,
@@ -504,7 +515,7 @@ export function useAutoTrader(asset: Asset) {
         size, leverage: autoTradeLeverage,
         stopLoss: sl, takeProfit: tp,
         isOpen: true, openedAt: new Date().toISOString(),
-        note: reasoning, confidence,
+        note: reasoning, confidence, features: data.features,
       });
 
       trailMeta[posId] = { peakPrice: entry, trailTriggerPct, trailRetreatPct, leverage: autoTradeLeverage, direction, lockedPct: 0 };

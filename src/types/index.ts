@@ -158,6 +158,7 @@ export interface Trade {
   aiSignal?: AISignal;
   note?: string;        // why the bot took this trade
   confidence?: number;  // confidence at entry
+  features?: string[];  // setup feature tags (for per-setup learning)
 }
 
 export interface Position {
@@ -176,6 +177,7 @@ export interface Position {
   openedAt: string;
   note?: string;        // why the bot took this trade
   confidence?: number;  // confidence at entry
+  features?: string[];  // setup feature tags (for per-setup learning)
 }
 
 export interface AISignal {

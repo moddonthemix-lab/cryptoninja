@@ -61,7 +61,7 @@ async function handle(req: NextRequest) {
 
   const origin = `${url.protocol}//${url.host}`;
   const leverage = parseInt(process.env.CRON_LEVERAGE || "3", 10);
-  const minConf = parseInt(process.env.CRON_MIN_CONFIDENCE || "60", 10);
+  const minConf = parseInt(process.env.CRON_MIN_CONFIDENCE || "65", 10);
   const watch = (process.env.CRON_ASSETS || "BTC").split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
   const log: string[] = [];
 

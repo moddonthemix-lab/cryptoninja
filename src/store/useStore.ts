@@ -213,6 +213,7 @@ export const useStore = create<AppState>()(
             closeReason: reason as any,
             note: pos.note,
             confidence: pos.confidence,
+            features: pos.features,
           };
           return {
             openPositions: s.openPositions.filter((p) => p.id !== positionId),

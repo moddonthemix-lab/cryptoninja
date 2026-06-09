@@ -312,7 +312,7 @@ const lastClaude = new Map<string, ClaudeVerdict>();
 
 export async function POST(req: NextRequest) {
   try {
-    const { asset, leverage = 3, minConfidence = 60, learn = false, recentTrades = [], preview = false, useAI = true } = await req.json();
+    const { asset, leverage = 3, minConfidence = 65, learn = false, recentTrades = [], preview = false, useAI = true, featureStats = {} } = await req.json();
 
     // Resolve the HL coin name + dex for this ticker (stocks live on the xyz dex)
     const cfg = ASSETS[asset];
@@ -498,6 +498,29 @@ export async function POST(req: NextRequest) {
     const flowAgree = (d: "bullish" | "bearish" | "neutral") => d !== "neutral" && d === tradeDir;
     const flowConflict = (d: "bullish" | "bearish" | "neutral") => d !== "neutral" && d !== tradeDir;
 
+    // ── Per-setup LEARNING: tag this setup's features, then nudge confidence by
+    //    how those features have ACTUALLY performed on this account. ──
+    const features: string[] = [`tf:${whichBreak}`];
+    if (atGBLevel) features.push("gb");
+    if (stopRun.detected && stopRun.direction === tradeDir) features.push("stoprun");
+    if (ftfcAgrees) features.push("ftfc");
+    if (flowAgree(volFlowDir)) features.push("flow");
+    if (flowAgree(oiBiasDir)) features.push("oi");
+    if (intradayAgreement >= 1) features.push("intraday");
+    if (btcAgreesWithAsset) features.push("btc");
+    if (inManipulation) features.push("session");
+    let learnAdj = 0;
+    const learnNotes: string[] = [];
+    for (const f of features) {
+      const s = (featureStats as Record<string, { w: number; l: number }>)[f];
+      if (s && s.w + s.l >= 5) {
+        const wr = s.w / (s.w + s.l);
+        const adj = Math.round((wr - 0.5) * 20); // ±10 at 0%/100% win rate
+        if (adj !== 0) { learnAdj += adj; learnNotes.push(`${f} ${(wr * 100).toFixed(0)}%`); }
+      }
+    }
+    learnAdj = Math.max(-15, Math.min(15, learnAdj));
+
     // ── Confidence score breakdown (rule-based factors, shown in the bot panel) ──
     const buildBreakdown = () => {
       const b: Array<{ label: string; points: number; active: boolean }> = [
@@ -521,6 +544,7 @@ export async function POST(req: NextRequest) {
       b.push({ label: `Funding ${fundingDir}`, points: flowAgree(fundingDir) ? 3 : flowConflict(fundingDir) ? -3 : 0, active: fundingDir !== "neutral" });
       const tfPts = whichBreak === "daily" ? 12 : whichBreak === "4H" ? 8 : -6;
       b.push({ label: `${whichBreak.toUpperCase()} break (timeframe priority)`, points: tfPts, active: true });
+      if (learnAdj !== 0) b.push({ label: `Learning${learnNotes.length ? ` (${learnNotes.join(", ")})` : ""}`, points: learnAdj, active: true });
       return b;
     };
     const confidenceBreakdown = buildBreakdown();
@@ -646,6 +670,7 @@ Confidence drivers: FTFC agrees with break (+20) / conflicts (-15); intraday + G
     // (needs extra confluence to clear the confidence gate).
     const tfBoost = whichBreak === "daily" ? 12 : whichBreak === "4H" ? 8 : -6;
     confidence += tfBoost;
+    confidence += learnAdj; // per-setup learning (computed above)
     confidence = Math.min(100, Math.max(0, confidence));
 
     let tpPct: number;
@@ -753,7 +778,7 @@ Confidence drivers: FTFC agrees with break (+20) / conflicts (-15); intraday + G
         goldbachLevel: nearestGB.name, goldbachLevelPrice: nearestGB.level,
         atGoldbachLevel: atGBLevel, goldbachTp: gbTpLevel, gbBiasDaily, gbBiasH4, gbBiasH1,
         po3Main, dealingRangeLow: drMain.low, dealingRangeHigh: drMain.high,
-        amdPhase, stopRunDetected: stopRun.detected, confidenceBreakdown,
+        amdPhase, stopRunDetected: stopRun.detected, confidenceBreakdown, features,
       };
     };
 
