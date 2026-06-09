@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import type { Candle } from "@/types";
 import { ASSETS } from "@/types";
+import { getUserFills } from "@/lib/hyperliquid";
 
 const HL_INFO = "https://api.hyperliquid.xyz/info";
 
@@ -280,6 +281,25 @@ function getClient(): Anthropic {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error("ANTHROPIC_API_KEY not set");
   return new Anthropic({ apiKey: key });
+}
+
+// Real recent win rate from the account's own fills — drives an adaptive bar:
+// when we've been losing, the bot gets pickier (raises the confidence floor).
+let wrCache: { ts: number; rate: number; n: number } = { ts: 0, rate: 0, n: 0 };
+async function getRecentWinRate(): Promise<{ rate: number; n: number }> {
+  const master = process.env.HL_MASTER_ADDRESS;
+  if (!master) return { rate: 0, n: 0 };
+  if (Date.now() - wrCache.ts < 5 * 60_000) return { rate: wrCache.rate, n: wrCache.n };
+  try {
+    const fills = await getUserFills(master);
+    const closes = (Array.isArray(fills) ? fills : [])
+      .filter((f: any) => (parseFloat(f.closedPnl ?? "0") || 0) !== 0)
+      .slice(-25); // last ~25 closed trades
+    const wins = closes.filter((f: any) => (parseFloat(f.closedPnl ?? "0") || 0) > 0).length;
+    const rate = closes.length ? wins / closes.length : 0;
+    wrCache = { ts: Date.now(), rate, n: closes.length };
+    return { rate, n: closes.length };
+  } catch { return { rate: wrCache.rate, n: wrCache.n }; }
 }
 
 // Per-asset Claude cooldown — once we've asked Claude about a setup, don't ask
@@ -671,6 +691,39 @@ Confidence drivers: FTFC agrees with break (+20) / conflicts (-15); intraday + G
     if (tpTarget != null) {
       const gbName = Object.entries(gbMain).find(([, v]) => v === gbTpLevel)?.[0];
       reasoning += ` TP → ${tpSource === "goldbach" ? `Goldbach ${gbName ?? "target"}` : `prior-week ${direction === "long" ? "high" : "low"}`} $${tpTarget.toFixed(2)}.`;
+    }
+
+    // ── Quality filters to raise win rate (apply to every setup) ──
+    const recentWR = await getRecentWinRate();
+    // 1) Confluence: never take a bare break — need at least one supporting factor.
+    const confluenceCount = [
+      atGBLevel,
+      stopRun.detected && stopRun.direction === tradeDir,
+      ftfcAgrees,
+      flowAgree(volFlowDir),
+      flowAgree(oiBiasDir),
+      intradayAgreement >= 1,
+    ].filter(Boolean).length;
+    if (!vetoed && confluenceCount === 0) {
+      vetoed = true;
+      vetoReason = "Bare break, no confluence (GB/stop-run/FTFC/flow/intraday) — skipping";
+    }
+    // 2) Risk:reward — skip trades whose structural target is too close vs the stop.
+    const slDist = currentPrice * (0.23 / leverage);
+    const tpForRR = tpTarget != null
+      ? tpTarget
+      : (direction === "long" ? currentPrice * (1 + (tpPct / 100) / leverage) : currentPrice * (1 - (tpPct / 100) / leverage));
+    const rr = slDist > 0 ? Math.abs(tpForRR - currentPrice) / slDist : 0;
+    if (!vetoed && rr < 1.3) {
+      vetoed = true;
+      vetoReason = `Risk:reward too low (${rr.toFixed(2)}:1, need ≥1.3) — skipping`;
+    }
+    if (rr >= 2) confidence = Math.min(100, confidence + 5);
+    // 3) Adaptive bar — if recent win rate is poor, demand higher conviction.
+    const adaptiveMin = recentWR.n >= 8 && recentWR.rate < 0.40 ? minConfidence + 8 : minConfidence;
+    if (!vetoed && confidence < adaptiveMin) {
+      vetoed = true;
+      vetoReason = `Below adaptive bar ${adaptiveMin}% (recent win rate ${(recentWR.rate * 100).toFixed(0)}% over ${recentWR.n}) — waiting for a stronger setup`;
     }
 
     const buildPayload = () => {
