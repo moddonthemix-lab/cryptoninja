@@ -719,6 +719,24 @@ Confidence drivers: FTFC agrees with break (+20) / conflicts (-15); intraday + G
       reasoning += ` TP → ${tpSource === "goldbach" ? `Goldbach ${gbName ?? "target"}` : `prior-week ${direction === "long" ? "high" : "low"}`} $${tpTarget.toFixed(2)}.`;
     }
 
+    // ── STRUCTURE-BASED STOP (TheStrat) ──────────────────────────────────────
+    // Stop at the opposite extreme of the trigger (prior) candle on the break
+    // timeframe, + ~1% buffer so a failed swing / stop-run wick doesn't take us
+    // out prematurely. Then make it LEVERAGE-AWARE: cap leverage so hitting that
+    // structural stop risks at most MAX_STOP_RISK of margin (prevents a wide
+    // stop from being past liquidation at high leverage).
+    const SL_BUFFER = 0.01;          // 1% beyond the structural level
+    const MAX_STOP_RISK = 0.5;       // ≤50% of margin at the structural stop
+    const trig = whichBreak === "daily" ? priorDay : whichBreak === "4H" ? priorH4 : priorH1;
+    let structSl = direction === "long" ? trig.low * (1 - SL_BUFFER) : trig.high * (1 + SL_BUFFER);
+    // Safety: stop must be on the losing side of entry; fall back to 0.6% if not
+    if (direction === "long" && structSl >= currentPrice) structSl = currentPrice * (1 - 0.006);
+    if (direction === "short" && structSl <= currentPrice) structSl = currentPrice * (1 + 0.006);
+    const stopDistPct = Math.abs(currentPrice - structSl) / currentPrice;
+    const maxLevForStop = stopDistPct > 0 ? Math.floor(MAX_STOP_RISK / stopDistPct) : leverage;
+    const effLeverage = Math.max(1, Math.min(leverage, maxLevForStop || 1));
+    reasoning += ` SL → ${direction === "long" ? "below" : "above"} ${whichBreak} candle $${structSl.toFixed(2)} (${(stopDistPct * 100).toFixed(2)}%, ${effLeverage}x).`;
+
     // ── Quality filters to raise win rate (apply to every setup) ──
     const recentWR = await getRecentWinRate();
     // 1) Confluence: never take a bare break — need at least one supporting factor.
@@ -734,11 +752,11 @@ Confidence drivers: FTFC agrees with break (+20) / conflicts (-15); intraday + G
       vetoed = true;
       vetoReason = "Bare break, no confluence (GB/stop-run/FTFC/flow/intraday) — skipping";
     }
-    // 2) Risk:reward — skip trades whose structural target is too close vs the stop.
-    const slDist = currentPrice * (0.23 / leverage);
+    // 2) Risk:reward — structural stop distance vs structural target distance.
+    const slDist = Math.abs(currentPrice - structSl);
     const tpForRR = tpTarget != null
       ? tpTarget
-      : (direction === "long" ? currentPrice * (1 + (tpPct / 100) / leverage) : currentPrice * (1 - (tpPct / 100) / leverage));
+      : (direction === "long" ? currentPrice * (1 + (tpPct / 100) / effLeverage) : currentPrice * (1 - (tpPct / 100) / effLeverage));
     const rr = slDist > 0 ? Math.abs(tpForRR - currentPrice) / slDist : 0;
     if (!vetoed && rr < 1.3) {
       vetoed = true;
@@ -753,21 +771,19 @@ Confidence drivers: FTFC agrees with break (+20) / conflicts (-15); intraday + G
     }
 
     const buildPayload = () => {
-      const slPricePct = 0.23 / leverage;
-      const tpPricePct = tpPct / 100 / leverage;
+      const tpPricePct = tpPct / 100 / effLeverage;
       const tp = tpTarget != null
         ? tpTarget
         : (direction === "long" ? currentPrice * (1 + tpPricePct) : currentPrice * (1 - tpPricePct));
-      // Effective TP % (of margin) implied by the structural target, for display
-      const tpPctEff = tpTarget != null
-        ? Math.round((Math.abs(tpTarget - currentPrice) / currentPrice) * 100 * leverage)
-        : tpPct;
+      // Effective TP/SL % of margin (display), implied by structural prices × effLeverage
+      const tpPctEff = Math.round((Math.abs(tp - currentPrice) / currentPrice) * 100 * effLeverage);
+      const slPctEff = Math.round(stopDistPct * 100 * effLeverage);
       return {
-        shouldTrade: !vetoed, direction, leverage,
-        confidence, tpPct: tpPctEff, slPct: 23, isSwing, aiUsed, tpSource,
+        shouldTrade: !vetoed, direction, leverage: effLeverage,
+        confidence, tpPct: tpPctEff, slPct: slPctEff, isSwing, aiUsed, tpSource,
         reason: vetoed ? vetoReason : undefined,
         entry: currentPrice,
-        sl: direction === "long" ? currentPrice * (1 - slPricePct) : currentPrice * (1 + slPricePct),
+        sl: structSl,
         tp,
         reasoning, trailTriggerPct, trailRetreatPct,
         ftfc: assetFTFC, weeklyDir, dailyDir, h4Dir, h1Dir,

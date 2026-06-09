@@ -165,13 +165,14 @@ export function useAutoTrader(asset: Asset) {
         const meta = trailMeta[pos.id];
         const isCurrentAsset = pos.asset === asset;
 
-        // ── Hard SL: -23% of margin ──
-        if (pnlPct <= -23) {
+        // ── Structural SL: price hit the stop level (or a catastrophic backstop) ──
+        const slHit = pos.stopLoss > 0 && (direction === "long" ? price <= pos.stopLoss : price >= pos.stopLoss);
+        if (slHit || pnlPct <= -85) {
           closeLive(pos, price);
           closePosition(pos.id, price, "sl");
           alertExit(pos, price, "SL", pnlPct);
           if (meta) delete trailMeta[pos.id];
-          addLog(`SL hit on ${pos.asset} @ $${price.toFixed(2)} (−23% margin)`, "sl");
+          addLog(`SL hit on ${pos.asset} @ $${price.toFixed(2)} (stop $${pos.stopLoss.toFixed(2)})`, "sl");
           if (isCurrentAsset) {
             setStatus((s) => ({ ...s, state: "idle", currentPnlPct: null, peakPnlPct: null, trailActive: false }));
           }
@@ -393,6 +394,9 @@ export function useAutoTrader(asset: Asset) {
       const { direction, confidence, entry, tp, tpPct, reasoning,
         trailTriggerPct = 20, trailRetreatPct = 35 } = data;
       let { sl } = data;
+      // Route returns a leverage-aware effective leverage (capped so the
+      // structural stop risks ≤50% margin). Use it for the actual trade.
+      const effLev = Math.max(1, Math.min(data.leverage ?? autoTradeLeverage, autoTradeLeverage));
 
       addLog(
         `Signal: ${direction.toUpperCase()} ${asset} @ $${entry.toFixed(2)} | conf ${confidence}% | TP ${tpPct}% margin`,
@@ -423,15 +427,15 @@ export function useAutoTrader(asset: Asset) {
       const dayGain = await realizedToday(tradingMode === "live");
       const equityNow = tradingMode === "live" ? (hl.totalBalance || available) : useStore.getState().paperBalance;
       if (equityNow > 0 && dayGain / equityNow >= 0.25) {
-        const tightPct = 12 / 100 / autoTradeLeverage;
+        const tightPct = 12 / 100 / effLev;
         sl = direction === "long" ? entry * (1 - tightPct) : entry * (1 + tightPct);
         addLog(`Up +${((dayGain / equityNow) * 100).toFixed(0)}% today — tightening SL to −12% to protect gains`, "info");
       }
 
       const marginToUse = available * riskPct;
-      let positionUsd = marginToUse * autoTradeLeverage; // notional
+      let positionUsd = marginToUse * effLev; // notional
       // Honor Hyperliquid's $10 minimum order when there's margin to support it
-      if (tradingMode === "live" && positionUsd < 10 && available * autoTradeLeverage >= 10) positionUsd = 10;
+      if (tradingMode === "live" && positionUsd < 10 && available * effLev >= 10) positionUsd = 10;
       const size = positionUsd / entry;
       const posId = `auto_${Date.now()}`;
 
@@ -456,7 +460,7 @@ export function useAutoTrader(asset: Asset) {
             type: "updateLeverage",
             asset: assetInfo.assetId,
             isCross: assetInfo.dex !== "xyz",
-            leverage: Math.min(autoTradeLeverage, assetInfo.maxLeverage),
+            leverage: Math.min(effLev, assetInfo.maxLeverage),
           };
           await fetch("/api/hl/trade", {
             method: "POST",
@@ -512,13 +516,13 @@ export function useAutoTrader(asset: Asset) {
       openPosition({
         id: posId, asset, direction,
         entryPrice: entry, currentPrice: entry,
-        size, leverage: autoTradeLeverage,
+        size, leverage: effLev,
         stopLoss: sl, takeProfit: tp,
         isOpen: true, openedAt: new Date().toISOString(),
         note: reasoning, confidence, features: data.features,
       });
 
-      trailMeta[posId] = { peakPrice: entry, trailTriggerPct, trailRetreatPct, leverage: autoTradeLeverage, direction, lockedPct: 0 };
+      trailMeta[posId] = { peakPrice: entry, trailTriggerPct, trailRetreatPct, leverage: effLev, direction, lockedPct: 0 };
 
       // Count this trade toward the daily cap + start the cooldown
       useStore.getState().recordAutoTrade();
@@ -533,7 +537,7 @@ export function useAutoTrader(asset: Asset) {
       const modeTag = tradingMode === "live" ? "🟢 LIVE" : "📄 PAPER";
       notify(
         `${direction === "long" ? "🟩" : "🟥"} <b>ENTRY</b> · ${modeTag}\n` +
-        `${direction.toUpperCase()} <b>${asset}</b> ${autoTradeLeverage}x\n` +
+        `${direction.toUpperCase()} <b>${asset}</b> ${effLev}x\n` +
         `Entry: $${entry.toFixed(4)}\nSL: $${sl.toFixed(4)}  TP: $${tp.toFixed(4)}\n` +
         `Confidence: ${confidence}%\n${reasoning}`
       );

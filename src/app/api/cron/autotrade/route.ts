@@ -164,14 +164,15 @@ async function handle(req: NextRequest) {
         if (!data.shouldTrade || (data.confidence ?? 0) < minConf) continue;
 
         const { direction, entry, sl, tp, confidence, reasoning } = data;
+        const lev = Math.max(1, Math.min(data.leverage ?? leverage, leverage)); // leverage-aware (structural stop)
         const riskPct = 0.30 + Math.min(1, Math.max(0, (confidence - minConf) / (100 - minConf))) * 0.20;
-        let notional = available * riskPct * leverage;
-        if (notional < 10 && available * leverage >= 10) notional = 10;
+        let notional = available * riskPct * lev;
+        if (notional < 10 && available * lev >= 10) notional = 10;
         if (notional <= 0) continue;
         const size = notional / entry;
         const isBuy = direction === "long";
 
-        await submitWithAgent(buildSetLeverageAction(info.assetId, Math.min(leverage, info.maxLeverage), info.dex !== "xyz"), master).catch(() => {});
+        await submitWithAgent(buildSetLeverageAction(info.assetId, Math.min(lev, info.maxLeverage), info.dex !== "xyz"), master).catch(() => {});
         const limitPx = isBuy ? entry * 1.01 : entry * 0.99;
         const od: any = await submitWithAgent(buildOrderAction(info.assetId, isBuy, limitPx, size, false, "Ioc", info.szDecimals), master);
         if (od?.status !== "ok") { log.push(`${asset} order failed: ${od?.response ?? od?.error ?? "unknown"}`); continue; }
@@ -183,7 +184,7 @@ async function handle(req: NextRequest) {
         traded++;
         log.push(`ENTER ${direction} ${asset} @ ${entry} conf ${confidence}%`);
         await tg(origin,
-          `${isBuy ? "🟩" : "🟥"} <b>SERVER ENTRY</b> · ${direction.toUpperCase()} <b>${asset}</b> ${leverage}x @ $${(+entry).toFixed(4)}\n` +
+          `${isBuy ? "🟩" : "🟥"} <b>SERVER ENTRY</b> · ${direction.toUpperCase()} <b>${asset}</b> ${lev}x @ $${(+entry).toFixed(4)}\n` +
           `SL $${(+sl).toFixed(4)}  TP $${(+tp).toFixed(4)} · conf ${confidence}%\n${reasoning || ""}`);
         break; // one entry per tick
       }
