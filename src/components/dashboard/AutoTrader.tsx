@@ -328,7 +328,7 @@ export function AutoTrader() {
         </div>
 
         <p className="text-ninja-muted/60 text-[10px] text-center pt-0.5">
-          SL fixed 23% · TP 25–100% (AI)
+          SL at trigger candle (structural) · TP to GB/structure · trailing
         </p>
       </div>
 

@@ -108,6 +108,19 @@ export function useAutoTrader(asset: Asset) {
       const md = useStore.getState().marketData;
       const liveMode = useStore.getState().tradingMode === "live";
 
+      // ── Reconcile: drop phantom bot/copy positions not backed by a real HL
+      //    position (e.g. stale entries, or an order that never actually filled). ──
+      const liveCoins = new Set((hlRef.current.livePositions || []).map((p: any) => String(p.coin).replace(/^xyz:/, "")));
+      for (const pos of allPositions) {
+        if (!pos.id.startsWith("auto_") && !pos.id.startsWith("copy_")) continue;
+        const ageMs = Date.now() - new Date(pos.openedAt).getTime();
+        if (ageMs > 90_000 && !liveCoins.has(pos.asset)) {
+          useStore.getState().removePosition(pos.id);
+          delete trailMeta[pos.id];
+          addLog(`Cleared phantom ${pos.asset} position (no live position on Hyperliquid)`, "info");
+        }
+      }
+
       // Close the real HL position (reduce-only) — safe even if HL already
       // closed it via its own TP/SL trigger.
       const closeLive = (pos: typeof allPositions[number], price: number) => {
@@ -485,7 +498,12 @@ export function useAutoTrader(asset: Asset) {
           });
           const orderData = await orderRes.json();
           if (orderData.error) throw new Error(orderData.error);
-          addLog(`Live order submitted to Hyperliquid`, "trade");
+          // Verify the order actually FILLED — an IOC that doesn't match, or an
+          // insufficient-margin reject, returns status "ok" with an error/no fill.
+          const st = orderData?.response?.data?.statuses?.[0];
+          if (st?.error) throw new Error(st.error);
+          if (!st?.filled) throw new Error("Order did not fill (no liquidity / margin) — no position opened");
+          addLog(`Live order filled on Hyperliquid`, "trade");
 
           // 3. Attach TP + SL trigger orders on HL (server-enforced, survive app close)
           try {

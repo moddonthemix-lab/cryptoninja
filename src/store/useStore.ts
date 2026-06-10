@@ -83,6 +83,7 @@ interface AppState {
   setPositions: (positions: Position[]) => void;
   openPosition: (position: Position) => void;
   updatePositionStop: (positionId: string, stopLoss: number) => void;
+  removePosition: (positionId: string) => void;
   closePosition: (positionId: string, exitPrice: number, reason: string) => void;
   setTrades: (trades: Trade[]) => void;
   addTrade: (trade: Trade) => void;
@@ -184,6 +185,9 @@ export const useStore = create<AppState>()(
             p.id === positionId ? { ...p, stopLoss } : p
           ),
         })),
+      // Drop a position without recording a trade (e.g. a phantom not backed by HL)
+      removePosition: (positionId) =>
+        set((s) => ({ openPositions: s.openPositions.filter((p) => p.id !== positionId) })),
       closePosition: (positionId, exitPrice, reason) =>
         set((s) => {
           const pos = s.openPositions.find((p) => p.id === positionId);

@@ -175,7 +175,11 @@ async function handle(req: NextRequest) {
         await submitWithAgent(buildSetLeverageAction(info.assetId, Math.min(lev, info.maxLeverage), info.dex !== "xyz"), master).catch(() => {});
         const limitPx = isBuy ? entry * 1.01 : entry * 0.99;
         const od: any = await submitWithAgent(buildOrderAction(info.assetId, isBuy, limitPx, size, false, "Ioc", info.szDecimals), master);
-        if (od?.status !== "ok") { log.push(`${asset} order failed: ${od?.response ?? od?.error ?? "unknown"}`); continue; }
+        const fillSt = od?.response?.data?.statuses?.[0];
+        if (od?.status !== "ok" || fillSt?.error || !fillSt?.filled) {
+          log.push(`${asset} order not filled: ${fillSt?.error ?? od?.response ?? od?.error ?? "no fill"}`);
+          continue;
+        }
 
         await submitWithAgent(buildPositionTpSlAction(info.assetId, isBuy, size, tp, sl, info.szDecimals), master).catch(() => {});
         recordServerTrade();
