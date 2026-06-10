@@ -299,6 +299,9 @@ export const useStore = create<AppState>()(
         closedTrades: state.closedTrades,
         strategies: state.strategies,
       }),
+      // Live-only: always force live, ignoring any stale persisted "paper" mode
+      // from older versions that would otherwise route trades to the dead paper path.
+      merge: (persisted, current) => ({ ...current, ...(persisted as object), tradingMode: "live" as const }),
     }
   )
 );
