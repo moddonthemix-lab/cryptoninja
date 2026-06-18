@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, memo } from "react";
 import { ASSETS } from "@/types";
+import { NativeChart } from "./NativeChart";
 
 // Resolve the TradingView symbol from the asset registry, with a sane fallback.
 function resolveSymbol(asset: string): string {
@@ -9,6 +10,11 @@ function resolveSymbol(asset: string): string {
   if (cfg?.tvSymbol) return cfg.tvSymbol;
   const base = asset.replace(/-?USDC?$/i, "").toUpperCase();
   return `CRYPTO:${base}USD`;
+}
+
+// Markets with no TradingView listing (e.g. the xyz DRAM index) chart natively.
+function hasTvListing(asset: string): boolean {
+  return !!ASSETS[asset]?.tvSymbol;
 }
 
 const TV_INTERVALS: Record<string, string> = {
@@ -51,6 +57,8 @@ export const TradingViewWidget = memo(function TradingViewWidget({
   const pricesRef = useRef({ entryPrice, stopLoss, takeProfit });
   pricesRef.current = { entryPrice, stopLoss, takeProfit };
 
+  const useNative = !hasTvListing(asset);
+
   // Draw (or redraw) the entry/SL/TP lines, removing any previous ones first.
   const drawPriceLines = (widget: any) => {
     try {
@@ -79,6 +87,7 @@ export const TradingViewWidget = memo(function TradingViewWidget({
   };
 
   useEffect(() => {
+    if (useNative) return; // native chart manages its own lifecycle
     const node = containerRef.current;
     if (!node) return;
     chartReadyRef.current = false;
@@ -156,7 +165,7 @@ export const TradingViewWidget = memo(function TradingViewWidget({
       widgetRef.current = null;
       chartReadyRef.current = false;
     };
-  }, [asset, timeframe, height]);
+  }, [asset, timeframe, height, useNative]);
 
   // Redraw lines whenever entry/SL/TP change (without reloading the chart)
   useEffect(() => {
@@ -165,6 +174,20 @@ export const TradingViewWidget = memo(function TradingViewWidget({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entryPrice, stopLoss, takeProfit]);
+
+  // No TradingView listing (e.g. DRAM) → native Hyperliquid candle chart
+  if (useNative) {
+    return (
+      <NativeChart
+        asset={asset}
+        timeframe={timeframe}
+        height={height}
+        entryPrice={entryPrice}
+        stopLoss={stopLoss}
+        takeProfit={takeProfit}
+      />
+    );
+  }
 
   const hasLevels = entryPrice || stopLoss || takeProfit;
 

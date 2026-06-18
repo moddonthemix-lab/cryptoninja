@@ -83,6 +83,9 @@ export const ASSETS: Record<string, AssetConfig> = {
   DELL:  mk("DELL", "Dell", "#007db8", "D", "stock", "xyz", "NYSE:DELL"),
   NOW:   mk("NOW", "ServiceNow", "#62d84e", "N", "stock", "xyz", "NYSE:NOW"),
   // ── Commodities (xyz dex) ──
+  // DRAM has no CEX/TradingView listing — empty tvSymbol routes it to the
+  // native Hyperliquid candle chart (see TradingViewWidget → NativeChart).
+  DRAM:     mk("DRAM", "DRAM (memory)", "#22d3ee", "🧠", "commodity", "xyz", ""),
   GOLD:     mk("GOLD", "Gold", "#ffd700", "Au", "commodity", "xyz", "OANDA:XAUUSD"),
   SILVER:   mk("SILVER", "Silver", "#c0c0c0", "Ag", "commodity", "xyz", "OANDA:XAGUSD"),
   CL:       mk("CL", "Crude Oil (WTI)", "#3d3d3d", "Oil", "commodity", "xyz", "TVC:USOIL"),
@@ -93,7 +96,7 @@ export const ASSETS: Record<string, AssetConfig> = {
 
 // All ticker symbols, grouped for the UI picker
 export const ASSET_LIST: Asset[] = Object.keys(ASSETS);
-export const DEFAULT_WATCHLIST: Asset[] = ["BTC", "ETH", "SOL", "HYPE"];
+export const DEFAULT_WATCHLIST: Asset[] = ["BTC", "ETH", "SOL", "HYPE", "DRAM"];
 
 export interface StrategyCondition {
   id: string;
