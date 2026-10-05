@@ -48,7 +48,7 @@ export function AutoTrader() {
   };
   const activePos = openPositions.find((p) => p.isOpen && p.asset === botAsset);
   const tradesToday = getTradesToday();
-  const MAX_TRADES = 5;
+  const MAX_TRADES = 3;
 
   // Ticker the bot watches (default BTC) — typed input, validated against registry
   const [tickerInput, setTickerInput] = useState(botAsset);

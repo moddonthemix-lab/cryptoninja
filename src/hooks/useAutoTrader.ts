@@ -48,7 +48,8 @@ export interface AutoTraderStatus {
 }
 
 
-const MAX_TRADES_PER_DAY = 5;
+const MAX_TRADES_PER_DAY = 3;
+const WIN_STREAK_STOP = 2; // stop for the day after this many wins in a row
 const TRADE_COOLDOWN_MS = 30 * 60 * 1000; // 30 min between auto trades
 const MIN_CONFIDENCE = 65;                 // only take 65%+ confidence setups
 
@@ -307,6 +308,13 @@ export function useAutoTrader(asset: Asset) {
       const tradesToday = store.getTradesToday();
       if (tradesToday >= MAX_TRADES_PER_DAY) {
         setStatus((s) => ({ ...s, state: "idle", lastSignal: `Daily limit reached (${MAX_TRADES_PER_DAY} trades). Resets at midnight, or tap reset.` }));
+        return;
+      }
+
+      // ── Win-streak stop — lock in a good day after N wins in a row ──
+      const winStreak = store.getConsecutiveWinsToday();
+      if (winStreak >= WIN_STREAK_STOP) {
+        setStatus((s) => ({ ...s, state: "idle", lastSignal: `${winStreak} wins in a row — done for today. Resets at midnight.` }));
         return;
       }
 

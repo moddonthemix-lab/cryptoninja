@@ -98,6 +98,7 @@ interface AppState {
   toggleBotAI: () => void;
   recordAutoTrade: () => void;
   getTradesToday: () => number;
+  getConsecutiveWinsToday: () => number;
   resetAutoTradeCount: () => void;
   setCopyTrade: (patch: Partial<AppState["copyTrade"]>) => void;
   setCopyStatus: (patch: Partial<AppState["copyStatus"]>) => void;
@@ -251,6 +252,19 @@ export const useStore = create<AppState>()(
         const s = get();
         const today = new Date().toLocaleDateString("en-CA");
         return s.autoTradeDate === today ? s.autoTradeCount : 0;
+      },
+      // Consecutive winning trades closed TODAY (newest-first; a loss breaks the streak).
+      getConsecutiveWinsToday: () => {
+        const s = get();
+        const today = new Date().toLocaleDateString("en-CA");
+        let streak = 0;
+        for (const t of s.closedTrades) { // closedTrades is ordered newest-first
+          const day = t.closedAt ? new Date(t.closedAt).toLocaleDateString("en-CA") : "";
+          if (day !== today) break;            // reached an older day — stop
+          const win = (t.pnl ?? t.pnlPercent ?? 0) > 0;
+          if (win) streak++; else break;        // a loss ends the streak
+        }
+        return streak;
       },
       resetAutoTradeCount: () => set({
         autoTradeCount: 0,
