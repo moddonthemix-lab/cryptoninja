@@ -17,8 +17,8 @@ export interface AssetConfig {
   icon: string;
   category: AssetCategory;
   // Hyperliquid routing
-  dex: "" | "xyz";        // "" = main crypto perps dex, "xyz" = equities/commodities
-  hlCoin: string;         // coin name in HL API ("BTC" or "xyz:TSLA")
+  dex: string;            // "" = main crypto perps dex; builder dex name otherwise ("xyz", "mkts")
+  hlCoin: string;         // coin name in HL API ("BTC", "xyz:TSLA", "mkts:USTECH")
   // TradingView chart symbol
   tvSymbol: string;
   // legacy fields kept for compatibility
@@ -27,14 +27,17 @@ export interface AssetConfig {
   decimals?: number;
 }
 
-// Compact factory to keep the registry readable
+// Compact factory to keep the registry readable.
+// `coin` overrides the HL coin name when the exchange's internal name differs
+// from our display symbol (e.g. QQQ is "mkts:USTECH").
 function mk(
   symbol: string, name: string, color: string, icon: string,
-  category: AssetCategory, dex: "" | "xyz", tvSymbol: string
+  category: AssetCategory, dex: string, tvSymbol: string, coin?: string
 ): AssetConfig {
+  const base = coin ?? symbol;
   return {
     symbol, name, color, icon, category, dex,
-    hlCoin: dex === "xyz" ? `xyz:${symbol}` : symbol,
+    hlCoin: dex ? `${dex}:${base}` : base,
     tvSymbol,
     decimals: 8,
   };
@@ -193,6 +196,22 @@ export const ASSETS: Record<string, AssetConfig> = {
   GLW: mk("GLW", "Corning", "#94a3b8", "G", "stock", "xyz", ""),
   ACN: mk("ACN", "Accenture", "#94a3b8", "A", "stock", "xyz", ""),
   INNOLIGHT: mk("INNOLIGHT", "INNOLIGHT", "#94a3b8", "I", "stock", "xyz", ""),
+
+  // ── mkts dex (perp_dex_index 9) — indices, macro & markets not on xyz ──
+  // `coin` is the exchange's internal name; our symbol is the friendly display.
+  QQQ:      mk("QQQ", "Nasdaq 100 (QQQ)", "#76b900", "Q", "stock", "mkts", "NASDAQ:QQQ", "USTECH"),
+  US500:    mk("US500", "S&P 500 (mkts)", "#818cf8", "5", "stock", "mkts", "", "US500"),
+  US2000:   mk("US2000", "Russell 2000", "#818cf8", "2", "stock", "mkts", "", "SMALL2000"),
+  USBOND:   mk("USBOND", "US 10Y Bond", "#38bdf8", "B", "stock", "mkts", "", "USBOND"),
+  USENERGY: mk("USENERGY", "US Energy", "#fbbf24", "E", "stock", "mkts", "", "USENERGY"),
+  USOIL:    mk("USOIL", "US Oil (WTI, mkts)", "#3d3d3d", "O", "commodity", "mkts", "", "USOIL"),
+  SEMI:     mk("SEMI", "Semiconductors", "#38bdf8", "S", "stock", "mkts", "", "SEMI"),
+  GLDMINE:  mk("GLDMINE", "Gold Miners", "#ffd700", "G", "stock", "mkts", "", "GLDMINE"),
+  TENCENT:  mk("TENCENT", "Tencent", "#1e90ff", "T", "stock", "mkts", "", "TENCENT"),
+  JPN225:   mk("JPN225", "Nikkei 225 (mkts)", "#818cf8", "N", "stock", "mkts", "", "JPN225"),
+  XIAOMI:   mk("XIAOMI", "Xiaomi", "#ff6900", "X", "stock", "mkts", "", "XIAOMI"),
+  RTX:      mk("RTX", "RTX (Raytheon)", "#94a3b8", "R", "stock", "mkts", "", "RTX"),
+  BVIV:     mk("BVIV", "Bitcoin Volatility", "#f7931a", "V", "stock", "mkts", "", "BVIV"),
 };
 
 // All ticker symbols, grouped for the UI picker

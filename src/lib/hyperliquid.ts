@@ -3,6 +3,21 @@
 
 const HL_API = "https://api.hyperliquid.xyz";
 
+// Builder-deployed perp dexs (HIP-3) and their index in the perpDexs response.
+// perpDexs = [null(main), xyz, flx, vntl, hyna, km, abcd, cash, para, mkts, io].
+// Order/leverage asset id for a builder dex = 100000 + perp_dex_index*10000 + index_in_dex.
+export const PERP_DEX_INDEX: Record<string, number> = {
+  xyz: 1,
+  mkts: 9,
+};
+
+export function dexAssetId(dex: string, indexInDex: number): number {
+  if (!dex) return indexInDex; // main dex: asset id is just the universe index
+  const pdi = PERP_DEX_INDEX[dex];
+  if (pdi == null) return indexInDex; // unknown dex — best effort
+  return 100000 + pdi * 10000 + indexInDex;
+}
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface HLAssetMeta {

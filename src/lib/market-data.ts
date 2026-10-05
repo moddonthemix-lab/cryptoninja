@@ -10,7 +10,7 @@ const HL_INTERVAL_MS: Record<string, number> = {
 function coinOf(asset: Asset): string {
   return ASSETS[asset]?.hlCoin ?? asset;
 }
-function dexOf(asset: Asset): "" | "xyz" {
+function dexOf(asset: Asset): string {
   return ASSETS[asset]?.dex ?? "";
 }
 
@@ -61,7 +61,7 @@ function ctxToMarketData(asset: Asset, ctx: any): MarketData {
 }
 
 // Fetch one dex's meta+ctxs and return a coin-name → ctx map
-async function fetchDexCtxs(dex: "" | "xyz"): Promise<Record<string, any>> {
+async function fetchDexCtxs(dex: string): Promise<Record<string, any>> {
   const res = await fetch(HL_INFO, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -87,23 +87,20 @@ export async function fetchMarketData(asset: Asset): Promise<MarketData> {
 }
 
 // Fetch prices for a set of tickers (default: everything in the registry),
-// making at most one request per dex.
+// making at most one request per dex (main + each builder dex in use).
 export async function fetchAllMarketData(
   assets: Asset[] = ASSET_LIST
 ): Promise<Record<Asset, MarketData>> {
-  const needMain = assets.some((a) => dexOf(a) === "");
-  const needXyz = assets.some((a) => dexOf(a) === "xyz");
-
+  const dexes = Array.from(new Set(assets.map(dexOf)));
   const empty: Record<string, any> = {};
-  const [mainMap, xyzMap] = await Promise.all([
-    needMain ? fetchDexCtxs("").catch(() => empty) : Promise.resolve(empty),
-    needXyz ? fetchDexCtxs("xyz").catch(() => empty) : Promise.resolve(empty),
-  ]);
+  const maps = await Promise.all(
+    dexes.map((d) => fetchDexCtxs(d).then((m) => [d, m] as const).catch(() => [d, empty] as const))
+  );
+  const byDex = Object.fromEntries(maps) as Record<string, Record<string, any>>;
 
   const result: Record<Asset, MarketData> = {};
   for (const asset of assets) {
-    const map = dexOf(asset) === "xyz" ? xyzMap : mainMap;
-    const ctx = map[coinOf(asset)];
+    const ctx = byDex[dexOf(asset)]?.[coinOf(asset)];
     result[asset] = ctx ? ctxToMarketData(asset, ctx) : generateMockMarketData(asset);
   }
   return result;
