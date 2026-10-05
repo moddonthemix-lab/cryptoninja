@@ -5,7 +5,7 @@ nixPkgs = ["nodejs_20", "openssl"]
 cmds = ["npm ci --include=dev"]
 
 [phases.build]
-cmds = ["npx prisma generate", "npm run build"]
+cmds = ["npx prisma generate", "NODE_OPTIONS=--max-old-space-size=4096 npm run build"]
 
 [start]
 cmd = "sh scripts/start.sh"
