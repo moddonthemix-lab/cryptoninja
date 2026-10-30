@@ -231,7 +231,11 @@ export function useHyperliquid() {
     }
   }, [assetMeta, submitAction, refreshAccount]);
 
-  // Attach / update TP and/or SL trigger orders on a position
+  // Attach / update TP and/or SL trigger orders on a position.
+  // CRITICAL: cancels every existing TP/SL trigger order for the coin FIRST, so
+  // moving/re-setting TP or SL never stacks duplicate trigger orders on HL.
+  // Pass BOTH desired values (the side you aren't changing keeps its current px)
+  // so the position always ends with exactly one TP and one SL.
   const setTpSl = useCallback(async ({
     asset, positionIsLong, size, takeProfit, stopLoss,
   }: {
@@ -247,7 +251,19 @@ export function useHyperliquid() {
     setLoading(true);
     setError(null);
     try {
-      // Single positionTpsl action with both triggers — no main order
+      // 1) Refresh, then cancel any existing trigger (TP/SL) orders for this coin.
+      await refreshAccount();
+      const existing = (hlData.openOrders || []).filter(
+        (o: any) => o.coin === meta.hlCoin && (o.isTrigger || !!o.triggerPx || o.tpsl)
+      );
+      if (existing.length) {
+        await submitAction({
+          type: "cancel",
+          cancels: existing.map((o: any) => ({ a: meta.assetId, o: o.oid })),
+        });
+      }
+
+      // 2) Place the fresh TP/SL (exactly one of each that was provided).
       const result = await submitAction(
         buildPositionTpSlAction(meta.assetId, positionIsLong, size, takeProfit, stopLoss, meta.szDecimals)
       );

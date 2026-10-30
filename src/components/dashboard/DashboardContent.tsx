@@ -19,8 +19,8 @@ import { ASSETS, DEFAULT_WATCHLIST } from "@/types";
 import { cn } from "@/lib/utils";
 
 export function DashboardContent() {
-  const { selectedAsset, setSelectedAsset, openPositions, aiSignals, chartOverlay } = useStore();
-  const { livePositions, triggers } = useHyperliquid();
+  const { selectedAsset, setSelectedAsset, openPositions, aiSignals, chartOverlay, tradingMode } = useStore();
+  const { livePositions, triggers, setTpSl } = useHyperliquid();
 
   const aiSignal = aiSignals[selectedAsset];
   const activePos = openPositions.find((p) => p.asset === selectedAsset && p.isOpen);
@@ -49,6 +49,19 @@ export function DashboardContent() {
   const quickList = DEFAULT_WATCHLIST.includes(selectedAsset)
     ? DEFAULT_WATCHLIST
     : [selectedAsset, ...DEFAULT_WATCHLIST];
+
+  // ── Drag-to-move TP/SL (live positions only) ──────────────────────────────
+  // Only a real HL position can be adjusted on-chart; setTpSl cancels existing
+  // trigger orders before placing the new ones, so dragging never stacks dupes.
+  const canDragTpSl = tradingMode === "live" && !!livePos;
+  const posIsLong = livePos ? parseFloat(livePos.szi) > 0 : activePos?.direction === "long";
+  const posSize = livePos ? Math.abs(parseFloat(livePos.szi)) : activePos?.size ?? 0;
+  const keepTp = liveTrig?.tp ?? (typeof chartTp === "number" ? chartTp : undefined);
+  const keepSl = liveTrig?.sl ?? (typeof chartSl === "number" ? chartSl : undefined);
+  const moveSL = (price: number) =>
+    setTpSl({ asset: selectedAsset, positionIsLong: posIsLong, size: posSize, takeProfit: keepTp, stopLoss: price }).catch(() => {});
+  const moveTP = (price: number) =>
+    setTpSl({ asset: selectedAsset, positionIsLong: posIsLong, size: posSize, takeProfit: price, stopLoss: keepSl }).catch(() => {});
 
 
   return (
@@ -99,6 +112,9 @@ export function DashboardContent() {
             entryPrice={chartEntry}
             stopLoss={chartSl}
             takeProfit={chartTp}
+            draggable={canDragTpSl}
+            onMoveSL={moveSL}
+            onMoveTP={moveTP}
           />
 
           {/* Live order flow — taker buy/sell pressure + fresh longs/shorts */}

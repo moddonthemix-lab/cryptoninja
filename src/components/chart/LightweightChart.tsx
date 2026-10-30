@@ -18,19 +18,32 @@ interface Props {
   entryPrice?: number;
   stopLoss?: number;
   takeProfit?: number;
+  // Drag support: when true the SL/TP lines can be dragged; release fires the
+  // matching callback with the new price so the caller updates the HL triggers.
+  draggable?: boolean;
+  onMoveSL?: (price: number) => void;
+  onMoveTP?: (price: number) => void;
 }
 
 const TIMEFRAMES = ["5m", "15m", "1h", "4h", "1d"] as const;
 
 export const LightweightChart = memo(function LightweightChart({
   asset, height = 520, entryPrice, stopLoss, takeProfit,
+  draggable = false, onMoveSL, onMoveTP,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const priceLinesRef = useRef<IPriceLine[]>([]);
+  const slLineRef = useRef<IPriceLine | null>(null);
+  const tpLineRef = useRef<IPriceLine | null>(null);
   const lastBarRef = useRef<Bar | null>(null);
+  // Live mirrors so the once-bound drag listeners stay current
+  const pxRef = useRef({ entryPrice, stopLoss, takeProfit });
+  pxRef.current = { entryPrice, stopLoss, takeProfit };
+  const cbRef = useRef({ draggable, onMoveSL, onMoveTP });
+  cbRef.current = { draggable, onMoveSL, onMoveTP };
   const [timeframe, setTimeframe] = useState<string>("1h");
   const [loading, setLoading] = useState(true);
   // Shorter chart on phones so it doesn't dominate the screen
@@ -62,28 +75,29 @@ export const LightweightChart = memo(function LightweightChart({
   // Create chart once
   useEffect(() => {
     if (!containerRef.current) return;
-    const chart = createChart(containerRef.current, {
-      layout: { background: { type: ColorType.Solid, color: "#12121a" }, textColor: "#64748b", fontFamily: "JetBrains Mono, monospace" },
-      grid: { vertLines: { color: "#1e1e2e" }, horzLines: { color: "#1e1e2e" } },
+    const el = containerRef.current;
+    const chart = createChart(el, {
+      layout: { background: { type: ColorType.Solid, color: "#050b06" }, textColor: "#4e7a5c", fontFamily: "JetBrains Mono, monospace" },
+      grid: { vertLines: { color: "#11301d" }, horzLines: { color: "#11301d" } },
       crosshair: { mode: CrosshairMode.Normal },
-      rightPriceScale: { borderColor: "#1e1e2e" },
-      timeScale: { borderColor: "#1e1e2e", timeVisible: true, secondsVisible: false },
+      rightPriceScale: { borderColor: "#11301d" },
+      timeScale: { borderColor: "#11301d", timeVisible: true, secondsVisible: false },
       height,
       autoSize: true,
     });
     chartRef.current = chart;
 
     const candleSeries = chart.addCandlestickSeries({
-      upColor: "#10b981", downColor: "#ef4444",
-      borderUpColor: "#10b981", borderDownColor: "#ef4444",
-      wickUpColor: "#10b981", wickDownColor: "#ef4444",
+      upColor: "#2bff88", downColor: "#ff4d5e",
+      borderUpColor: "#2bff88", borderDownColor: "#ff4d5e",
+      wickUpColor: "#2bff88", wickDownColor: "#ff4d5e",
     });
     candleSeriesRef.current = candleSeries;
 
     const volSeries = chart.addHistogramSeries({
       priceFormat: { type: "volume" },
       priceScaleId: "vol",
-      color: "#1e1e2e",
+      color: "#11301d",
     });
     volSeries.priceScale().applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
     volSeriesRef.current = volSeries;
@@ -91,13 +105,66 @@ export const LightweightChart = memo(function LightweightChart({
     const onResize = () => chart.applyOptions({ height });
     window.addEventListener("resize", onResize);
 
+    // ── Drag SL / TP lines ────────────────────────────────────────────────
+    let dragging: "sl" | "tp" | null = null;
+    const HIT_PX = 7;
+    const yToPrice = (clientY: number): number | null => {
+      const r = el.getBoundingClientRect();
+      const p = candleSeries.coordinateToPrice(clientY - r.top);
+      return p == null ? null : (p as number);
+    };
+    const nearLine = (clientY: number, price?: number): boolean => {
+      if (!price) return false;
+      const coord = candleSeries.priceToCoordinate(price);
+      if (coord == null) return false;
+      const r = el.getBoundingClientRect();
+      return Math.abs((clientY - r.top) - (coord as number)) <= HIT_PX;
+    };
+    const onDown = (e: MouseEvent) => {
+      if (!cbRef.current.draggable) return;
+      const { stopLoss, takeProfit } = pxRef.current;
+      if (nearLine(e.clientY, stopLoss)) dragging = "sl";
+      else if (nearLine(e.clientY, takeProfit)) dragging = "tp";
+      else return;
+      chart.applyOptions({ handleScroll: false, handleScale: false });
+      e.preventDefault();
+    };
+    const onMove = (e: MouseEvent) => {
+      if (!cbRef.current.draggable) return;
+      if (!dragging) {
+        const { stopLoss, takeProfit } = pxRef.current;
+        el.style.cursor = (nearLine(e.clientY, stopLoss) || nearLine(e.clientY, takeProfit)) ? "ns-resize" : "default";
+        return;
+      }
+      const price = yToPrice(e.clientY);
+      if (price == null) return;
+      (dragging === "sl" ? slLineRef.current : tpLineRef.current)?.applyOptions({ price });
+    };
+    const onUp = (e: MouseEvent) => {
+      if (!dragging) return;
+      const side = dragging; dragging = null;
+      chart.applyOptions({ handleScroll: true, handleScale: true });
+      el.style.cursor = "default";
+      const price = yToPrice(e.clientY);
+      if (price == null || price <= 0) return;
+      if (side === "sl") cbRef.current.onMoveSL?.(price); else cbRef.current.onMoveTP?.(price);
+    };
+    el.addEventListener("mousedown", onDown);
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+
     return () => {
       window.removeEventListener("resize", onResize);
+      el.removeEventListener("mousedown", onDown);
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
       chart.remove();
       chartRef.current = null;
       candleSeriesRef.current = null;
       volSeriesRef.current = null;
       priceLinesRef.current = [];
+      slLineRef.current = null;
+      tpLineRef.current = null;
     };
   }, [height]);
 
@@ -115,7 +182,7 @@ export const LightweightChart = memo(function LightweightChart({
         cleaned.map((c) => ({ time: c.time as UTCTimestamp, open: c.open, high: c.high, low: c.low, close: c.close }))
       );
       volSeriesRef.current?.setData(
-        cleaned.map((c) => ({ time: c.time as UTCTimestamp, value: c.volume, color: c.close >= c.open ? "#10b98133" : "#ef444433" }))
+        cleaned.map((c) => ({ time: c.time as UTCTimestamp, value: c.volume, color: c.close >= c.open ? "#2bff8833" : "#ff4d5e33" }))
       );
       lastBarRef.current = cleaned[cleaned.length - 1];
       candleSeriesRef.current?.priceScale().applyOptions({ autoScale: true });
@@ -134,7 +201,7 @@ export const LightweightChart = memo(function LightweightChart({
         // Incremental: update/append the latest couple of bars
         for (const b of clean(bars)) {
           candleSeriesRef.current?.update({ time: b.time as UTCTimestamp, open: b.open, high: b.high, low: b.low, close: b.close });
-          volSeriesRef.current?.update({ time: b.time as UTCTimestamp, value: b.volume, color: b.close >= b.open ? "#10b98133" : "#ef444433" });
+          volSeriesRef.current?.update({ time: b.time as UTCTimestamp, value: b.volume, color: b.close >= b.open ? "#2bff8833" : "#ff4d5e33" });
           lastBarRef.current = b;
         }
       } catch {
@@ -177,17 +244,20 @@ export const LightweightChart = memo(function LightweightChart({
       try { series.removePriceLine(line); } catch { /* ignore */ }
     }
     priceLinesRef.current = [];
+    slLineRef.current = null;
+    tpLineRef.current = null;
 
     const add = (price: number, color: string, title: string, style: LineStyle) => {
       const line = series.createPriceLine({
         price, color, lineWidth: 2, lineStyle: style, axisLabelVisible: true, title,
       });
       priceLinesRef.current.push(line);
+      return line;
     };
     if (entryPrice) add(entryPrice, "#22d3ee", "Entry", LineStyle.Dotted);
-    if (stopLoss) add(stopLoss, "#ef4444", "SL", LineStyle.Dotted);
-    if (takeProfit) add(takeProfit, "#10b981", "TP", LineStyle.Dotted);
-  }, [entryPrice, stopLoss, takeProfit, loading]);
+    if (stopLoss) slLineRef.current = add(stopLoss, "#ff4d5e", draggable ? "SL ⇅" : "SL", LineStyle.Dashed);
+    if (takeProfit) tpLineRef.current = add(takeProfit, "#2bff88", draggable ? "TP ⇅" : "TP", LineStyle.Dashed);
+  }, [entryPrice, stopLoss, takeProfit, draggable, loading]);
 
   const cfg = ASSETS[asset];
 
