@@ -116,7 +116,7 @@ export const NativeChart = memo(function NativeChart({
         series.createPriceLine({ price, color, lineWidth: 1, lineStyle: style, axisLabelVisible: true, title })
       );
     };
-    add(entryPrice, "#a855f7", "Entry", LineStyle.Solid);
+    add(entryPrice, "#22d3ee", "Entry", LineStyle.Solid);
     add(stopLoss, "#ef4444", "SL", LineStyle.Dashed);
     add(takeProfit, "#10b981", "TP", LineStyle.Dashed);
   }, [entryPrice, stopLoss, takeProfit]);

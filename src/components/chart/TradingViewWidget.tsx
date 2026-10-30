@@ -78,7 +78,7 @@ export const TradingViewWidget = memo(function TradingViewWidget({
         });
         if (id) shapeIdsRef.current.push(id);
       };
-      if (entryPrice) add(entryPrice, "#7c3aed", "Entry", 0, 2, "bottom");
+      if (entryPrice) add(entryPrice, "#22d3ee", "Entry", 0, 2, "bottom");
       if (stopLoss) add(stopLoss, "#ef4444", "SL", 2, 1, "bottom");
       if (takeProfit) add(takeProfit, "#10b981", "TP", 2, 1, "top");
     } catch {
@@ -197,9 +197,9 @@ export const TradingViewWidget = memo(function TradingViewWidget({
         <div className="flex items-center gap-4 px-4 py-1.5 border-b border-ninja-border/60 bg-ninja-bg/60 text-xs font-mono flex-wrap">
           {entryPrice && (
             <span className="flex items-center gap-1.5">
-              <span className="w-3 h-0.5 bg-purple-500 inline-block rounded" />
+              <span className="w-3 h-0.5 bg-cyan-500 inline-block rounded" />
               <span className="text-ninja-muted">Entry</span>
-              <span className="text-purple-400 font-bold">${entryPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+              <span className="text-cyan-400 font-bold">${entryPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
             </span>
           )}
           {stopLoss && (

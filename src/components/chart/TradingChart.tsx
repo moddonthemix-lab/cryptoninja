@@ -50,8 +50,8 @@ export function TradingChart({
       },
       crosshair: {
         mode: CrosshairMode.Normal,
-        vertLine: { color: "#7c3aed", labelBackgroundColor: "#7c3aed" },
-        horzLine: { color: "#7c3aed", labelBackgroundColor: "#7c3aed" },
+        vertLine: { color: "#22d3ee", labelBackgroundColor: "#22d3ee" },
+        horzLine: { color: "#22d3ee", labelBackgroundColor: "#22d3ee" },
       },
       rightPriceScale: {
         borderColor: "#1e1e2e",
@@ -94,7 +94,7 @@ export function TradingChart({
     if (entryPrice) {
       candleSeries.createPriceLine({
         price: entryPrice,
-        color: "#7c3aed",
+        color: "#22d3ee",
         lineWidth: 2,
         lineStyle: LineStyle.Solid,
         axisLabelVisible: true,

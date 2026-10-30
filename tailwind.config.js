@@ -10,16 +10,16 @@ const config = {
     extend: {
       colors: {
         ninja: {
-          bg: "#0a0a0f",
-          card: "#12121a",
-          border: "#1e1e2e",
-          accent: "#7c3aed",
-          "accent-hover": "#6d28d9",
-          green: "#10b981",
-          red: "#ef4444",
-          yellow: "#f59e0b",
-          text: "#e2e8f0",
-          muted: "#64748b",
+          bg: "#000000",
+          card: "#050b06",
+          border: "#11301d",
+          accent: "#00ff66",
+          "accent-hover": "#00e65c",
+          green: "#2bff88",
+          red: "#ff4d5e",
+          yellow: "#ffcb45",
+          text: "#d7ffe0",
+          muted: "#4e7a5c",
         },
       },
       fontFamily: {

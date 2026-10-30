@@ -83,7 +83,7 @@ function Background({ variant, color, positive }: { variant: BgVariant; color: s
     return (
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         <div className="absolute rounded-full" style={{ width: 320, height: 320, top: -80, right: -60, background: color, opacity: 0.28, filter: "blur(70px)" }} />
-        <div className="absolute rounded-full" style={{ width: 260, height: 260, bottom: -90, left: -40, background: "#7c3aed", opacity: 0.25, filter: "blur(80px)" }} />
+        <div className="absolute rounded-full" style={{ width: 260, height: 260, bottom: -90, left: -40, background: "#00ff66", opacity: 0.25, filter: "blur(80px)" }} />
         <div className="absolute rounded-full" style={{ width: 180, height: 180, top: "40%", left: "55%", background: color, opacity: 0.18, filter: "blur(60px)" }} />
       </div>
     );
@@ -131,7 +131,7 @@ function Background({ variant, color, positive }: { variant: BgVariant; color: s
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         <div className="absolute rounded-full" style={{ width: 240, height: 240, top: -40, left: -40, background: color, opacity: 0.22, filter: "blur(60px)" }} />
         <div className="absolute rounded-full" style={{ width: 220, height: 220, top: 30, right: -60, background: "#06b6d4", opacity: 0.18, filter: "blur(60px)" }} />
-        <div className="absolute rounded-full" style={{ width: 260, height: 260, bottom: -100, left: "30%", background: "#7c3aed", opacity: 0.22, filter: "blur(70px)" }} />
+        <div className="absolute rounded-full" style={{ width: 260, height: 260, bottom: -100, left: "30%", background: "#00ff66", opacity: 0.22, filter: "blur(70px)" }} />
       </div>
     );
   }

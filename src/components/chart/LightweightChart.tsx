@@ -184,7 +184,7 @@ export const LightweightChart = memo(function LightweightChart({
       });
       priceLinesRef.current.push(line);
     };
-    if (entryPrice) add(entryPrice, "#7c3aed", "Entry", LineStyle.Dotted);
+    if (entryPrice) add(entryPrice, "#22d3ee", "Entry", LineStyle.Dotted);
     if (stopLoss) add(stopLoss, "#ef4444", "SL", LineStyle.Dotted);
     if (takeProfit) add(takeProfit, "#10b981", "TP", LineStyle.Dotted);
   }, [entryPrice, stopLoss, takeProfit, loading]);
