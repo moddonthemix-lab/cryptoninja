@@ -212,6 +212,32 @@ export const ASSETS: Record<string, AssetConfig> = {
   XIAOMI:   mk("XIAOMI", "Xiaomi", "#ff6900", "X", "stock", "mkts", "", "XIAOMI"),
   RTX:      mk("RTX", "RTX (Raytheon)", "#94a3b8", "R", "stock", "mkts", "", "RTX"),
   BVIV:     mk("BVIV", "Bitcoin Volatility", "#f7931a", "V", "stock", "mkts", "", "BVIV"),
+
+  // ── para dex (perp_dex_index 8) — SOFI + markets unique to para ──
+  TOTAL2: mk("TOTAL2", "Crypto Mcap ex-BTC", "#f7931a", "T", "crypto", "para", ""),
+  OTHERS: mk("OTHERS", "Altcoin Mcap", "#f7931a", "O", "crypto", "para", ""),
+  BTCD: mk("BTCD", "BTC Dominance", "#f7931a", "B", "crypto", "para", ""),
+  COHR: mk("COHR", "Coherent", "#94a3b8", "C", "stock", "para", ""),
+  CRDO: mk("CRDO", "Credo", "#94a3b8", "C", "stock", "para", ""),
+  VST: mk("VST", "Vistra", "#94a3b8", "V", "stock", "para", ""),
+  TER: mk("TER", "Teradyne", "#94a3b8", "T", "stock", "para", ""),
+  "10Y": mk("10Y", "US 10Y Yield", "#94a3b8", "Y", "stock", "para", ""),
+  CIEN: mk("CIEN", "Ciena", "#94a3b8", "C", "stock", "para", ""),
+  NAVER: mk("NAVER", "Naver", "#94a3b8", "N", "stock", "para", ""),
+  MELI: mk("MELI", "MercadoLibre", "#94a3b8", "M", "stock", "para", ""),
+  SMCI: mk("SMCI", "Super Micro", "#94a3b8", "S", "stock", "para", ""),
+  ANSEM: mk("ANSEM", "ASM Intl", "#94a3b8", "A", "stock", "para", ""),
+  "30Y": mk("30Y", "US 30Y Yield", "#94a3b8", "Y", "stock", "para", ""),
+  "2Y": mk("2Y", "US 2Y Yield", "#94a3b8", "Y", "stock", "para", ""),
+  IGV: mk("IGV", "Software ETF", "#94a3b8", "I", "stock", "para", ""),
+  SOFI: mk("SOFI", "SoFi Technologies", "#94a3b8", "S", "stock", "para", ""),
+  ANTH: mk("ANTH", "Anthropic (pre-IPO)", "#94a3b8", "A", "stock", "para", ""),
+  TTWO: mk("TTWO", "Take-Two", "#94a3b8", "T", "stock", "para", ""),
+  CIFR: mk("CIFR", "Cipher Mining", "#94a3b8", "C", "stock", "para", ""),
+  TREAD: mk("TREAD", "Treadmill", "#94a3b8", "T", "stock", "para", ""),
+  DRV: mk("DRV", "Real Estate Bear 3x", "#94a3b8", "D", "stock", "para", ""),
+  GDX: mk("GDX", "Gold Miners ETF", "#94a3b8", "G", "stock", "para", ""),
+  PAPER: mk("PAPER", "Paper", "#94a3b8", "P", "stock", "para", ""),
 };
 
 // All ticker symbols, grouped for the UI picker

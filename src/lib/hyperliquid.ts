@@ -8,6 +8,7 @@ const HL_API = "https://api.hyperliquid.xyz";
 // Order/leverage asset id for a builder dex = 100000 + perp_dex_index*10000 + index_in_dex.
 export const PERP_DEX_INDEX: Record<string, number> = {
   xyz: 1,
+  para: 8,
   mkts: 9,
 };
 
